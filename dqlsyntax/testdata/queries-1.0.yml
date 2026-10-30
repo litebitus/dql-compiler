@@ -1,0 +1,98 @@
+# Every `written` here is read twice: grammar/1.0.ebnf must admit it, and the
+# parser must take it. `refused` holds what both turn away, with the words the
+# parser's refusal carries.
+
+admitted:
+  filter:
+    - ""
+    - mock
+    - '"a mock phrase"'
+    - job:mock-api
+    - 'job:"mock api"'
+    - job:mock*
+    - job:*
+    - latency_ms >= 100
+    - latency_ms <= 100
+    - latency_ms > 5
+    - latency_ms < 5
+    - job:(mock-api or mock-worker)
+    - job:(mock-api and not mock-worker)
+    - 'items:{ name:mock }'
+
+  combination:
+    - job:mock-api and env:mock
+    - job:mock-api or env:mock
+    - not job:mock-api
+    - (job:mock-api or job:mock-worker) and env:mock
+    - job:mock-api AND env:mock
+
+  escape:
+    - 'path:mock\:value'
+    - 'message:"a \"quoted\" word"'
+    - 'message:mock\|value'
+    - 'message:\or'
+
+  shaping:
+    - app:mock | dedup(trace_id)
+    - app:mock | eval(seconds = latency_ms / 1000)
+    - 'app:mock | extract(message, "id=(?P<id>\\w+)")'
+    - app:mock | fields(app, message)
+    - app:mock | rename(message, line)
+
+  time:
+    - __name__:mock_requests_total | rate(5m)
+    - __name__:mock_requests_total | rate(1h30m)
+    - app:mock | per_second(1m) by app
+
+  statistic:
+    - __name__:mock_requests_total | rate(5m) | sum() by job
+    - app:mock | per_second(1m) by app | avg() by app
+    - app:mock | avg(latency_ms) by app
+    - app:mock | count()
+    - app:mock | distinct_count(user) by app
+    - __name__:mock_up | max()
+    - app:mock | min(latency_ms)
+    - __name__:mock_latency_bucket | rate(5m) | quantile(0.95) by job, env
+    - app:mock | quantile(0.5, latency_ms)
+    - app:mock | stdev(latency_ms)
+    - __name__:mock_requests_total | rate(5m) | sum() by job | max()
+
+  result:
+    - __name__:mock_up | topk(5) by job
+    - __name__:mock_up | bottomk(3)
+    - __name__:mock_up | sort(value)
+    - app:mock | sort_desc(app)
+    - app:mock | limit(10)
+    - __name__:mock_up | where(value > 5)
+    - __name__:mock_up | where(value >= 5)
+    - __name__:mock_up | where(value < 5)
+    - __name__:mock_up | where(value <= 5)
+    - __name__:mock_up | where(value == 1)
+    - __name__:mock_up | where(value != 1)
+
+  arithmetic:
+    - (status:5* | per_second(5m) by job) / (status:* | per_second(5m) by job) * 100
+    - (app:mock | rate(5m) | sum()) + (app:other | rate(5m) | sum())
+    - (app:mock | rate(5m) | sum()) - 0.5
+
+refused:
+  - written: (a or b
+    says: a parenthesis is not closed
+  - written: '"open'
+    says: a quote is not closed
+  - written: 'level:'
+    says: the query ends early
+  - written: 'app:)'
+    says: a field needs a value, not ")"
+  - written: attempt >
+    says: a range on attempt needs a value
+  - written: a and
+    says: the query ends early
+  - written: a)
+    says: unexpected ")"
+  - written: and a
+    says: unexpected "and"
+  - written: not
+    says: the query ends early
+  - written: app:a or or b
+    says: unexpected "or"
