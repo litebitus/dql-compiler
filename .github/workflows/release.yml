@@ -8,7 +8,7 @@ on:
         required: true
         type: choice
         options: [auto, patch, minor, major]
-        default: auto
+        default: patch
       dry_run:
         description: "Compute and print the next version without changing anything."
         required: true

@@ -26,8 +26,3 @@ jobs:
 
       - name: Test
         run: make test
-
-      - name: Check the design doc carries the latest grammar
-        run: |
-          make grammar
-          git diff --exit-code docs/design.md

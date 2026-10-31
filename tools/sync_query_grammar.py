@@ -47,18 +47,24 @@ def written(document, grammar_version, grammar):
     return document[:opens] + block + document[closes:]
 
 
-def main():
+def main(arguments):
+    check_only = arguments == ["--check"]
+    if arguments and not check_only:
+        raise SystemExit(f"usage: {Path(__file__).name} [--check]")
     grammar_file = latest_grammar(sorted(GRAMMAR_DIRECTORY.glob("*.ebnf")))
     grammar_version = grammar_file.name.removesuffix(".ebnf")
     document = DOCUMENT.read_text()
     with_grammar = written(document, grammar_version, grammar_file.read_text())
     if with_grammar == document:
-        print(f"{DOCUMENT}: the grammar is {grammar_file}")
+        print(f"{DOCUMENT}: up to date with {grammar_file}")
         return 0
+    if check_only:
+        print(f"{DOCUMENT}: out of date with {grammar_file}; run `make grammar`", file=sys.stderr)
+        return 1
     DOCUMENT.write_text(with_grammar)
     print(f"{DOCUMENT}: written from {grammar_file}")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

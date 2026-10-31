@@ -18,3 +18,4 @@ test:
 	@unformatted="$$(gofmt -l .)"; [ -z "$$unformatted" ] || { echo "not gofmt-formatted:"; echo "$$unformatted"; exit 1; }
 	go test ./...
 	@UV_PROJECT_ENVIRONMENT=$(VENV) uv run --locked --group test pytest -q
+	@python3 tools/sync_query_grammar.py --check

@@ -57,3 +57,33 @@ def test_a_misnamed_grammar_file_is_refused():
 def test_no_grammar_file_is_refused():
     with pytest.raises(SystemExit):
         sync.latest_grammar([])
+
+
+@pytest.fixture
+def stale_document(tmp_path, monkeypatch):
+    grammar_directory = tmp_path / "grammar"
+    grammar_directory.mkdir()
+    (grammar_directory / "1.0.ebnf").write_text('New = "new" .\n')
+    design = tmp_path / "design.md"
+    design.write_text(document("```ebnf\nOld = \"old\" .\n```"))
+    monkeypatch.setattr(sync, "GRAMMAR_DIRECTORY", grammar_directory)
+    monkeypatch.setattr(sync, "DOCUMENT", design)
+    return design
+
+
+def test_a_check_fails_on_a_stale_document_and_leaves_it_alone(stale_document):
+    before = stale_document.read_text()
+    assert sync.main(["--check"]) == 1
+    assert stale_document.read_text() == before
+
+
+@pytest.mark.usefixtures("stale_document")
+def test_a_check_passes_once_the_grammar_is_written():
+    assert sync.main([]) == 0
+    assert sync.main(["--check"]) == 0
+
+
+@pytest.mark.usefixtures("stale_document")
+def test_an_unknown_argument_is_refused():
+    with pytest.raises(SystemExit):
+        sync.main(["--write"])
