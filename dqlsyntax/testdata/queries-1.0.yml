@@ -69,6 +69,8 @@ admitted:
     - __name__:mock_up | where(value <= 5)
     - __name__:mock_up | where(value == 1)
     - __name__:mock_up | where(value != 1)
+    - __name__:mock_up | where(value == 0) | count() by job
+    - __name__:mock_up | count() by job | where(value > 1) | sum()
 
   arithmetic:
     - (status:5* | per_second(5m) by job) / (status:* | per_second(5m) by job) * 100
@@ -104,6 +106,10 @@ refused:
     says: '"rate" cannot follow "sum"'
   - written: __name__:mock_up | rate(5m) | rate(1m)
     says: '"rate" cannot follow "rate"'
+  - written: __name__:mock_up | where(value == 0) | rate(5m)
+    says: '"rate" cannot follow "where"'
+  - written: __name__:mock_up | topk(5) | where(value > 1) | sum()
+    says: '"sum" cannot follow "where"'
   - written: __name__:mock_up | rate()
     says: '"rate" needs a duration, not ")"'
   - written: __name__:mock_up | topk(1.5)

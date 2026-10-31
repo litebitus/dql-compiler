@@ -34,7 +34,7 @@ Expression = Operand { Operator Operand } .
 Operand    = "(" Query ")" | Query | number .
 Operator   = "+" | "-" | "*" | "/" .
 
-Query = [ OrQuery ] { "|" Shaping } [ "|" Time ] { "|" Statistic } { "|" Result } .
+Query = [ OrQuery ] { "|" Shaping } [ "|" Time ] { "|" ( Statistic | Where ) } { "|" Result } .
 
 /* The filter, as DQL writes it. */
 
@@ -159,7 +159,7 @@ A stage is a call to one function the language defines. Each backend compiles th
 - A statistical function over series omits the field: it computes over the series' values.
 - `by` groups `per_second`, the statistical functions, `topk` and `bottomk`: one result per value of the grouping fields; with no grouping, one result.
 - In `sort`, `sort_desc` and `where`, `value` stands for a result's value.
-- Stages run in this order: the shaping functions, then at most one of `rate` and `per_second`, then the statistical functions, nesting in order, then the result functions. A query out of order is refused.
+- Stages run in this order: the shaping functions, then at most one of `rate` and `per_second`, then the statistical functions, nesting in order, then the result functions. `where` also stands among the statistical functions, keeping the results it compares before the next one aggregates them. A query out of order is refused.
 
 ## Arithmetic
 

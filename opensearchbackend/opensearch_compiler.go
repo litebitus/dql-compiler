@@ -88,6 +88,9 @@ func seriesRequest(queryClause map[string]any, stages []dqlsyntax.Stage, config 
 		case dqlsyntax.ShapingCategory:
 			return nil, fmt.Errorf("%q does not compile to the OpenSearch query DSL beside an aggregation", stage.Function)
 		case dqlsyntax.ResultCategory:
+			if computing == nil {
+				return nil, fmt.Errorf("%q compiles to the OpenSearch query DSL after the function whose buckets it selects", stage.Function)
+			}
 			selecting = append(selecting, stage)
 		default:
 			if computing != nil {

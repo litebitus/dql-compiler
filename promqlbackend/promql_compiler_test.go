@@ -42,6 +42,7 @@ func TestQueriesCompileToPromQL(t *testing.T) {
 		`__name__:mock_up | sort(value)`:                                                        `sort(mock_up)`,
 		`__name__:mock_up | sort_desc(value)`:                                                   `sort_desc(mock_up)`,
 		`__name__:mock_up | where(value > 5)`:                                                   `mock_up > 5`,
+		`__name__:mock_up | where(value == 0) | count() by job`:                                 `count by (job) (mock_up == 0)`,
 		`__name__:mock_up | rename(job, service)`:                                               `label_replace(mock_up, "service", "$1", "job", "(.*)")`,
 		`__name__:mock_up | rate(5m) | sum() | max()`:                                           `max(sum(rate(mock_up[5m])))`,
 		`__name__:mock_requests_total and (job:mock-api or env:mock) | rate(5m) | sum() by job`: `sum by (job) (rate(mock_requests_total{job="mock-api"}[5m]) or rate(mock_requests_total{env="mock"}[5m]))`,

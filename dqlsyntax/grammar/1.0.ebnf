@@ -10,7 +10,7 @@ Expression = Operand { Operator Operand } .
 Operand    = "(" Query ")" | Query | number .
 Operator   = "+" | "-" | "*" | "/" .
 
-Query = [ OrQuery ] { "|" Shaping } [ "|" Time ] { "|" Statistic } { "|" Result } .
+Query = [ OrQuery ] { "|" Shaping } [ "|" Time ] { "|" ( Statistic | Where ) } { "|" Result } .
 
 /* The filter, as DQL writes it. */
 

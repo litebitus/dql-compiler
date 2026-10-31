@@ -74,15 +74,16 @@ func TestStagesCompileToTheSearchRequest(t *testing.T) {
 
 func TestFormsTheQueryDSLHasNoFormForAreRefused(t *testing.T) {
 	for text, want := range map[string]string{
-		`(a | count() by app) / (b | count() by app)`: "arithmetic does not compile to the OpenSearch query DSL: a search request answers one query",
-		`app:mock | rate(5m)`:                         `"rate" does not compile to the OpenSearch query DSL: a record is not a counter`,
-		`app:mock | sum()`:                            `over records, "sum" names the field it computes over`,
-		`app:mock | count() | sum(bytes)`:             "the OpenSearch query DSL compiles one time or statistic function per query",
-		`app:mock | rename(a, b)`:                     `"rename" does not compile to the OpenSearch query DSL over records`,
-		`app:mock | sort(value)`:                      `"sort" over records names a field: a record has no value of its own`,
-		`app:mock | count() | where(value > 5)`:       `"where" compiles to the OpenSearch query DSL over buckets: a grouping or a time function`,
-		`app:mock | count() by app | topk(5) by env`:  `"topk" compiles to the OpenSearch query DSL over the grouping of the statistic before it`,
-		`app:mock | stdev(x) by app | topk(5)`:        `"topk" does not compile to the OpenSearch query DSL over a multi-value statistic`,
+		`(a | count() by app) / (b | count() by app)`:  "arithmetic does not compile to the OpenSearch query DSL: a search request answers one query",
+		`app:mock | rate(5m)`:                          `"rate" does not compile to the OpenSearch query DSL: a record is not a counter`,
+		`app:mock | sum()`:                             `over records, "sum" names the field it computes over`,
+		`app:mock | count() | sum(bytes)`:              "the OpenSearch query DSL compiles one time or statistic function per query",
+		`app:mock | rename(a, b)`:                      `"rename" does not compile to the OpenSearch query DSL over records`,
+		`app:mock | sort(value)`:                       `"sort" over records names a field: a record has no value of its own`,
+		`app:mock | count() | where(value > 5)`:        `"where" compiles to the OpenSearch query DSL over buckets: a grouping or a time function`,
+		`app:mock | where(value > 5) | count() by app`: `"where" compiles to the OpenSearch query DSL after the function whose buckets it selects`,
+		`app:mock | count() by app | topk(5) by env`:   `"topk" compiles to the OpenSearch query DSL over the grouping of the statistic before it`,
+		`app:mock | stdev(x) by app | topk(5)`:         `"topk" does not compile to the OpenSearch query DSL over a multi-value statistic`,
 	} {
 		if _, err := compiledJSON(t, text, mockConfig); err == nil || err.Error() != want {
 			t.Errorf("%q: err = %v, want %q", text, err, want)

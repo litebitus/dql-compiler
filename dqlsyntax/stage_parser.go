@@ -6,20 +6,24 @@ import (
 	"strings"
 )
 
-// stageOrder is the last stage a query has read, which every following stage may not precede.
+// stageOrder is the category a query's stages have reached; `where` stands among the statistics as well as the results.
 type stageOrder struct {
 	lastFunction string
+	reached      FunctionCategory
 }
 
 func (order *stageOrder) admit(function string) error {
-	if order.lastFunction != "" {
-		last := Functions[order.lastFunction].Category
-		next := Functions[function].Category
-		if next < last || (next == TimeCategory && last == TimeCategory) {
+	next := Functions[function].Category
+	if order.lastFunction != "" && function != "where" {
+		if next < order.reached || (next == TimeCategory && order.reached == TimeCategory) {
 			return fmt.Errorf("%q cannot follow %q", function, order.lastFunction)
 		}
 	}
 	order.lastFunction = function
+	if function == "where" {
+		next = max(order.reached, StatisticCategory)
+	}
+	order.reached = next
 	return nil
 }
 
