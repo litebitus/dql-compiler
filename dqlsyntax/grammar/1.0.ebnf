@@ -14,7 +14,7 @@ Query = [ OrQuery ] { "|" Shaping } [ "|" Time ] { "|" Statistic } { "|" Result 
 
 /* The filter, as DQL writes it. */
 
-OrQuery              = AndQuery { "or" AndQuery } .
+OrQuery              = AndQuery { [ "or" ] AndQuery } .
 AndQuery             = NotQuery { "and" NotQuery } .
 NotQuery             = [ "not" ] SubQuery .
 SubQuery             = "(" OrQuery ")"

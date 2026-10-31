@@ -96,3 +96,29 @@ refused:
     says: the query ends early
   - written: app:a or or b
     says: unexpected "or"
+  - written: 'items:{ name:mock'
+    says: a brace is not closed
+  - written: app:mock | median()
+    says: unknown function "median"
+  - written: __name__:mock_up | sum() | rate(5m)
+    says: '"rate" cannot follow "sum"'
+  - written: __name__:mock_up | rate(5m) | rate(1m)
+    says: '"rate" cannot follow "rate"'
+  - written: __name__:mock_up | rate()
+    says: '"rate" needs a duration, not ")"'
+  - written: __name__:mock_up | topk(1.5)
+    says: '"topk" needs a whole number, not "1.5"'
+  - written: __name__:mock_up | where(value 5)
+    says: '"where" needs a comparison operator, not "5"'
+  - written: app:mock | eval(seconds latency_ms)
+    says: '"eval" needs "=", not "latency_ms"'
+  - written: app:mock | count(
+    says: a parenthesis is not closed
+  - written: app:mock | count() by
+    says: '"by" needs a field, not end of query'
+  - written: app:mock | count() app
+    says: unexpected "app"
+  - written: (app:mock | count()) / (app:other)
+    says: arithmetic combines queries that answer time series
+  - written: (app:mock | count()) / app:other
+    says: arithmetic needs a query in parentheses or a number, not "app:other"

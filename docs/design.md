@@ -38,7 +38,7 @@ Query = [ OrQuery ] { "|" Shaping } [ "|" Time ] { "|" Statistic } { "|" Result 
 
 /* The filter, as DQL writes it. */
 
-OrQuery              = AndQuery { "or" AndQuery } .
+OrQuery              = AndQuery { [ "or" ] AndQuery } .
 AndQuery             = NotQuery { "and" NotQuery } .
 NotQuery             = [ "not" ] SubQuery .
 SubQuery             = "(" OrQuery ")"
@@ -180,7 +180,7 @@ A backend is a compiler from the parsed query to one native language. Each takes
 | Backend | Configuration | Filter |
 |---|---|---|
 | LogQL (Log Query Language, Grafana Loki) | the stream labels | stream selector for stream labels, label filters for the rest, line filters for terms |
-| OpenSearch query DSL | the time field | a query clause |
+| OpenSearch query DSL | the time field, the group limit | a query clause |
 | PPL (Piped Processing Language, OpenSearch) | the source, its time field | `where` |
 | PromQL (Prometheus Query Language) | none | label matchers |
 | SPL (Search Processing Language, Splunk) | the index | the search |
@@ -228,7 +228,8 @@ The filter compiles to series selectors.
 - `rate` applies to each selector; statistical and result functions apply to the joined result.
 - `quantile` over a classic histogram's bucket series, `__name__:<histogram>_bucket`, compiles to `histogram_quantile` with `le` added to the grouping; over other series, to `quantile`.
 - Arithmetic between queries pairs series with `on (<grouping>)`.
-- Each selector needs a matcher that cannot match the empty string, as PromQL requires; `__name__` is one.
+- Each selector needs a matcher that cannot match the empty string, as PromQL requires; `__name__` is one. A blank filter is refused for the same reason.
+- A filter expands into at most 64 selectors.
 - A term with no field, a range and a nested query are refused: a series carries flat labels, not text, and a label matcher has no range.
 
 ```
@@ -257,13 +258,18 @@ The filter compiles to a query clause, as OpenSearch Dashboards compiles it.
 | `field:{ query }` | `nested` |
 | `and`, `or`, `not`, `( )` | `bool` |
 
-A blank filter matches every record. Time functions bucket with `date_histogram` on the configured time field; `by` nests a `terms` aggregation per grouping field.
+A blank filter matches every record.
+
+- A query answering items is a search: shaping and result functions set its `collapse`, `_source`, `sort` and `size`.
+- A query answering time series is an aggregation over one time or statistic function. `per_second` buckets with `date_histogram` on the configured time field; `by` nests a `terms` aggregation per grouping field, of the configured group limit.
+- `topk`, `bottomk` and `where` apply to the buckets of the function before them: `topk` and `bottomk` order and size its innermost `terms`, and `where` is a `bucket_selector` in it.
+- Arithmetic is refused: a search request answers one query.
 
 ## Go API
 
 | Package | Entry point | Answers |
 |---|---|---|
-| `dqlsyntax` | `ParseQuery(text, grammarVersion string) (ParsedQuery, error)` | the query's syntax tree and its result kind |
+| `dqlsyntax` | `ParseQuery(text, grammarVersion string) (ParsedQuery, error)` | the query's syntax tree; its `ResultKind()` is `ItemsResult` or `TimeSeriesResult` |
 | `promqlbackend` | `CompileQuery(query ParsedQuery) (string, error)` | the PromQL expression |
 | `opensearchbackend` | `CompileQuery(query ParsedQuery, config BackendConfig) (map[string]any, error)` | the search request body |
 
@@ -279,5 +285,11 @@ An error states what was wrong in the query's own terms:
 - `a quote is not closed`
 - `a field needs a value, not <token>`
 - `a range on <field> needs a value`
+- `a brace is not closed`
+- `unknown function "<name>"`
+- `"<function>" cannot follow "<function>"`
+- `"<function>" needs <argument>, not <token>`
+- `arithmetic combines queries that answer time series`
+- `grammar version <version> is not supported; supported: <versions>`
 
 A refusal names the version, the function or the form it cannot compile, and why.

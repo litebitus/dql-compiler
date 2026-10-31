@@ -1,6 +1,9 @@
 VENV = /tmp/dql-compiler-venv
 
-.PHONY: grammar requirements test
+.PHONY: build grammar requirements test
+
+build: test
+	go build ./...
 
 grammar:
 	@python3 tools/sync_query_grammar.py
@@ -11,4 +14,7 @@ requirements:
 		-o tools/requirements.txt
 
 test:
+	go vet ./...
+	@unformatted="$$(gofmt -l .)"; [ -z "$$unformatted" ] || { echo "not gofmt-formatted:"; echo "$$unformatted"; exit 1; }
+	go test ./...
 	@UV_PROJECT_ENVIRONMENT=$(VENV) uv run --locked --group test pytest -q
