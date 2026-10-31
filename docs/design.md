@@ -27,8 +27,9 @@ Version `1.0`.
    An uppercase production is structure the parser reads. A lowercase one is a
    single token the scanner answers with, and its body says what that token
    looks like: an unquoted literal is any character but a specialCharacter,
-   beginning no keyword unless escaped. Keywords and function names read in any
-   case. */
+   beginning no keyword unless escaped, and a `$` before a name opens a
+   variableReference, never a bare `$name`. Keywords and function names read in
+   any case. */
 
 Expression = Operand { Operator Operand } .
 Operand    = "(" Query ")" | Query | number .
@@ -99,7 +100,9 @@ literal           = quotedString | unquotedLiteral .
 quotedString      = "\"" { quotedCharacter } "\"" .
 unquotedLiteral   = unquotedCharacter { unquotedCharacter } .
 quotedCharacter   = "\\" any | any .
-unquotedCharacter = "\\" specialCharacter | "\\" keyword | "*" | any .
+unquotedCharacter = "\\" specialCharacter | "\\" keyword | "*" | variableReference | any .
+variableReference = "$" "{" variableName "}" .
+variableName      = letter { letter | digit | "_" } .
 specialCharacter  = "\\" | "(" | ")" | ":" | "<" | ">" | "\"" | "*" | "{" | "}" | "|" .
 keyword           = "or" | "and" | "not" .
 duration          = wholeNumber durationUnit { wholeNumber durationUnit } .
@@ -107,6 +110,7 @@ durationUnit      = "ms" | "s" | "m" | "h" | "d" | "w" | "y" .
 number            = [ "-" ] wholeNumber [ "." wholeNumber ] .
 wholeNumber       = digit { digit } .
 digit             = "0" … "9" .
+letter            = "a" … "z" | "A" … "Z" | "_" .
 any               = "\u0000" … "\U0010FFFF" .
 ```
 
@@ -131,6 +135,7 @@ An operand in parentheses is a query when it holds a top-level `|`; any other pa
 
 - Terms with no operator between them match any of them.
 - A backslash takes the character after it as written.
+- `${name}` in a value is a variable reference: a backend passes it through as written, for the tool running the query to substitute. It is the one form a variable takes; a bare `$name` is refused, since text following it would read as part of the name.
 - A field is the name the backend's items carry: a record's field path, a series' label, a span's attribute. A series' metric name is its label `__name__`.
 
 ## Functions
@@ -217,13 +222,14 @@ The filter compiles to series selectors.
 | `job:a` | `job="a"` |
 | `job:"a b"` | `job="a b"` |
 | `job:a*` | `job=~"a.*"` |
+| `job:${job}` | `job=~"${job}"` |
 | `job:*` | `job=~".+"` |
 | `not job:a` | `job!="a"` |
 | `not job:a*` | `job!~"a.*"` |
 | `not job:*` | `job=""` |
 | `job:(a or b)` | `job=~"a\|b"` |
 
-- A value is copied as written: `"` and `\` are escaped, and in a wildcard value every regular-expression character but `*` is escaped. A dashboard variable such as `$job` reaches the dashboard tool unchanged.
+- A value is copied as written: `"` and `\` are escaped, and in a wildcard value every regular-expression character but `*` is escaped. A variable reference such as `${job}` is written unescaped, so the dashboard tool substitutes it, and a value holding one compiles to a regular-expression matcher, `job=~"${job}"`, which also matches when the tool substitutes several chosen values as an alternation.
 - A filter with `or` across fields is rewritten into a disjunction of conjunctions. Each conjunction is one selector, and the selectors are joined with PromQL's `or`.
 - `rate` applies to each selector; statistical and result functions apply to the joined result.
 - `quantile` over a classic histogram's bucket series, `__name__:<histogram>_bucket`, compiles to `histogram_quantile` with `le` added to the grouping; over other series, to `quantile`.
@@ -286,6 +292,8 @@ An error states what was wrong in the query's own terms:
 - `a field needs a value, not <token>`
 - `a range on <field> needs a value`
 - `a brace is not closed`
+- `write a variable as ${<name>}, not $<name>`
+- `a variable is written ${name}, its name letters, digits and underscores`
 - `unknown function "<name>"`
 - `"<function>" cannot follow "<function>"`
 - `"<function>" needs <argument>, not <token>`

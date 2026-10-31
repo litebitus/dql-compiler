@@ -3,8 +3,9 @@
    An uppercase production is structure the parser reads. A lowercase one is a
    single token the scanner answers with, and its body says what that token
    looks like: an unquoted literal is any character but a specialCharacter,
-   beginning no keyword unless escaped. Keywords and function names read in any
-   case. */
+   beginning no keyword unless escaped, and a `$` before a name opens a
+   variableReference, never a bare `$name`. Keywords and function names read in
+   any case. */
 
 Expression = Operand { Operator Operand } .
 Operand    = "(" Query ")" | Query | number .
@@ -75,7 +76,9 @@ literal           = quotedString | unquotedLiteral .
 quotedString      = "\"" { quotedCharacter } "\"" .
 unquotedLiteral   = unquotedCharacter { unquotedCharacter } .
 quotedCharacter   = "\\" any | any .
-unquotedCharacter = "\\" specialCharacter | "\\" keyword | "*" | any .
+unquotedCharacter = "\\" specialCharacter | "\\" keyword | "*" | variableReference | any .
+variableReference = "$" "{" variableName "}" .
+variableName      = letter { letter | digit | "_" } .
 specialCharacter  = "\\" | "(" | ")" | ":" | "<" | ">" | "\"" | "*" | "{" | "}" | "|" .
 keyword           = "or" | "and" | "not" .
 duration          = wholeNumber durationUnit { wholeNumber durationUnit } .
@@ -83,4 +86,5 @@ durationUnit      = "ms" | "s" | "m" | "h" | "d" | "w" | "y" .
 number            = [ "-" ] wholeNumber [ "." wholeNumber ] .
 wholeNumber       = digit { digit } .
 digit             = "0" … "9" .
+letter            = "a" … "z" | "A" … "Z" | "_" .
 any               = "\u0000" … "\U0010FFFF" .

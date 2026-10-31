@@ -19,6 +19,11 @@ admitted:
     - job:(mock-api and not mock-worker)
     - 'items:{ name:mock }'
 
+  variable:
+    - env:${env}
+    - job:mock-${env}-*
+    - job:(${job} or mock-api)
+
   combination:
     - job:mock-api and env:mock
     - job:mock-api or env:mock
@@ -100,6 +105,12 @@ refused:
     says: unexpected "or"
   - written: 'items:{ name:mock'
     says: a brace is not closed
+  - written: env:$env
+    says: write a variable as ${env}, not $env
+  - written: env:${env
+    says: a variable is written ${name}, its name letters, digits and underscores
+  - written: env:${env-x}
+    says: a variable is written ${name}, its name letters, digits and underscores
   - written: app:mock | median()
     says: unknown function "median"
   - written: __name__:mock_up | sum() | rate(5m)

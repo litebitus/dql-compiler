@@ -307,14 +307,19 @@ func matcherOf(field string, value dqlsyntax.Value, negated bool) labelMatcher {
 		return labelMatcher{label: field, operator: "=", value: ""}
 	case value.IsPresence():
 		return labelMatcher{label: field, operator: "=~", value: ".+"}
-	case value.HasWildcard() && negated:
+	case (value.HasWildcard() || holdsVariable(value)) && negated:
 		return labelMatcher{label: field, operator: "!~", value: valueExpression(value)}
-	case value.HasWildcard():
+	case value.HasWildcard() || holdsVariable(value):
 		return labelMatcher{label: field, operator: "=~", value: valueExpression(value)}
 	case negated:
 		return labelMatcher{label: field, operator: "!=", value: value.Text()}
 	}
 	return labelMatcher{label: field, operator: "=", value: value.Text()}
+}
+
+// holdsVariable reports whether an unquoted value references a variable, which a dashboard tool substitutes as a regular expression when several values are chosen.
+func holdsVariable(value dqlsyntax.Value) bool {
+	return !value.Quoted && dqlsyntax.VariableReferencePattern.MatchString(value.Text())
 }
 
 func valueExpression(value dqlsyntax.Value) string {
@@ -323,7 +328,7 @@ func valueExpression(value dqlsyntax.Value) string {
 	}
 	quoted := make([]string, len(value.Parts))
 	for index, part := range value.Parts {
-		quoted[index] = regexp.QuoteMeta(part)
+		quoted[index] = dqlsyntax.EscapeAroundVariables(part, regexp.QuoteMeta)
 	}
 	return strings.Join(quoted, ".*")
 }

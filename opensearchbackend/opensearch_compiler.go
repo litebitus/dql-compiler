@@ -352,16 +352,20 @@ func valueClause(field string, value dqlsyntax.Value) map[string]any {
 func wildcardPattern(value dqlsyntax.Value) string {
 	escaped := make([]string, len(value.Parts))
 	for index, part := range value.Parts {
-		var builder strings.Builder
-		for _, character := range part {
-			if strings.ContainsRune(queryStringSpecials, character) {
-				builder.WriteRune('\\')
-			}
-			builder.WriteRune(character)
-		}
-		escaped[index] = builder.String()
+		escaped[index] = dqlsyntax.EscapeAroundVariables(part, queryStringEscaped)
 	}
 	return strings.Join(escaped, "*")
+}
+
+func queryStringEscaped(text string) string {
+	var builder strings.Builder
+	for _, character := range text {
+		if strings.ContainsRune(queryStringSpecials, character) {
+			builder.WriteRune('\\')
+		}
+		builder.WriteRune(character)
+	}
+	return builder.String()
 }
 
 func stringsAsAny(values []string) []any {

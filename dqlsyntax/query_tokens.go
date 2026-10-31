@@ -89,7 +89,7 @@ func (reader queryReader) filterTokenAt(at int) (queryToken, error) {
 	case character == '"':
 		return reader.quotedAt(at)
 	}
-	return reader.wordAt(at, filterWordBreaks, true), nil
+	return reader.wordAt(at, filterWordBreaks, true)
 }
 
 func (reader queryReader) stageTokenAt(at int) (queryToken, error) {
@@ -105,7 +105,10 @@ func (reader queryReader) stageTokenAt(at int) (queryToken, error) {
 	case character == '"':
 		return reader.quotedAt(at)
 	}
-	word := reader.wordAt(at, stageWordBreaks, false)
+	word, err := reader.wordAt(at, stageWordBreaks, false)
+	if err != nil {
+		return queryToken{}, err
+	}
 	switch {
 	case word.escaped:
 	case numberPattern.MatchString(word.text):
@@ -150,17 +153,29 @@ func (reader queryReader) quotedAt(quoteStart int) (queryToken, error) {
 	return queryToken{}, errQuoteNotClosed
 }
 
-func (reader queryReader) wordAt(wordStart int, wordBreaks string, wildcardsSplit bool) queryToken {
+// wordAt reads an unquoted word; a filter word splits at each unescaped `*` and holds variable references whole.
+func (reader queryReader) wordAt(wordStart int, wordBreaks string, inFilter bool) (queryToken, error) {
 	var part strings.Builder
 	var parts []string
 	escaped := false
 	at := wordStart
 	for ; at < len(reader.runes); at++ {
 		character := reader.runes[at]
+		if character == '$' && inFilter {
+			reference, referenceEnd, err := reader.variableReferenceAt(at)
+			if err != nil {
+				return queryToken{}, err
+			}
+			if reference != "" {
+				part.WriteString(reference)
+				at = referenceEnd - 1
+				continue
+			}
+		}
 		if unicode.IsSpace(character) || strings.ContainsRune(wordBreaks, character) {
 			break
 		}
-		if character == '*' && wildcardsSplit {
+		if character == '*' && inFilter {
 			parts = append(parts, part.String())
 			part.Reset()
 			continue
@@ -180,7 +195,44 @@ func (reader queryReader) wordAt(wordStart int, wordBreaks string, wildcardsSpli
 		parts:     parts,
 		escaped:   escaped,
 		end:       at,
+	}, nil
+}
+
+// VariableReferencePattern matches a variable reference, `${name}`, the one form a dashboard variable is written in.
+var VariableReferencePattern = regexp.MustCompile(`\$\{[A-Za-z_][A-Za-z0-9_]*\}`)
+
+var (
+	variableNamePattern  = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*`)
+	errMalformedVariable = errors.New("a variable is written ${name}, its name letters, digits and underscores")
+)
+
+// EscapeAroundVariables escapes the text of a value and leaves its variable references as written, for the UI to substitute.
+func EscapeAroundVariables(text string, escape func(string) string) string {
+	var escaped strings.Builder
+	literalStart := 0
+	for _, reference := range VariableReferencePattern.FindAllStringIndex(text, -1) {
+		escaped.WriteString(escape(text[literalStart:reference[0]]))
+		escaped.WriteString(text[reference[0]:reference[1]])
+		literalStart = reference[1]
 	}
+	escaped.WriteString(escape(text[literalStart:]))
+	return escaped.String()
+}
+
+// variableReferenceAt reads the reference a `$` opens; it answers none for a `$` no name follows.
+func (reader queryReader) variableReferenceAt(dollarAt int) (string, int, error) {
+	following := string(reader.runes[dollarAt+1:])
+	if bareName := variableNamePattern.FindString(following); bareName != "" {
+		return "", 0, fmt.Errorf("write a variable as ${%s}, not $%s", bareName, bareName)
+	}
+	if !strings.HasPrefix(following, "{") {
+		return "", 0, nil
+	}
+	reference := VariableReferencePattern.FindString(string(reader.runes[dollarAt:]))
+	if reference == "" || !strings.HasPrefix(string(reader.runes[dollarAt:]), reference) {
+		return "", 0, errMalformedVariable
+	}
+	return reference, dollarAt + len([]rune(reference)), nil
 }
 
 // holdsTopLevelPipe reports whether the parentheses opening at an operand's start hold a `|` of their own.

@@ -38,6 +38,8 @@ func TestFiltersCompileAsOpenSearchDashboardsCompilesThem(t *testing.T) {
 		`app:mock`:            `{"query":{"match":{"app":"mock"}}}`,
 		`app:"mock api"`:      `{"query":{"match_phrase":{"app":"mock api"}}}`,
 		`path:a/b*`:           `{"query":{"query_string":{"fields":["path"],"query":"a\\/b*"}}}`,
+		`path:a/${env}*`:      `{"query":{"query_string":{"fields":["path"],"query":"a\\/${env}*"}}}`,
+		`app:${app}`:          `{"query":{"match":{"app":"${app}"}}}`,
 		`app:*`:               `{"query":{"exists":{"field":"app"}}}`,
 		`latency_ms >= 100`:   `{"query":{"range":{"latency_ms":{"gte":"100"}}}}`,
 		`items:{ name:mock }`: `{"query":{"nested":{"path":"items","query":{"match":{"items.name":"mock"}}}}}`,
