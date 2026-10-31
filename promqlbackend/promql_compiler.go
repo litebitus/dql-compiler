@@ -32,9 +32,13 @@ func CompileQuery(query dqlsyntax.ParsedQuery) (string, error) {
 	var compiled strings.Builder
 	for index, operand := range expression.Operands {
 		if index > 0 {
-			compiled.WriteString(" " + expression.Operators[index-1] + " ")
+			compiled.WriteString(" ")
+			compiled.WriteString(expression.Operators[index-1])
+			compiled.WriteString(" ")
 			if shared := sharedGrouping(expression.Operands[index-1], operand); len(shared) > 0 {
-				compiled.WriteString("on (" + strings.Join(shared, ", ") + ") ")
+				compiled.WriteString("on (")
+				compiled.WriteString(strings.Join(shared, ", "))
+				compiled.WriteString(") ")
 			}
 		}
 		if operand.Query == nil {
@@ -45,7 +49,9 @@ func CompileQuery(query dqlsyntax.ParsedQuery) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		compiled.WriteString("(" + compiledQuery + ")")
+		compiled.WriteString("(")
+		compiled.WriteString(compiledQuery)
+		compiled.WriteString(")")
 	}
 	return compiled.String(), nil
 }
