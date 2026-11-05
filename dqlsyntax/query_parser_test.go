@@ -139,7 +139,7 @@ func TestTheMatcherRefusesWhatTheGrammarDoesNot(t *testing.T) {
 		{kind: grammarSymbolToken, text: "("},
 		{kind: grammarSymbolToken, text: ")"},
 	}
-	if (grammarMatcher{grammar: grammar, tokens: stageWithoutPipe}).admits() {
+	if (grammarMatcher{grammar: grammar, start: grammarStart, tokens: stageWithoutPipe}).admits() {
 		t.Error("the grammar admits a stage with no | before it")
 	}
 }

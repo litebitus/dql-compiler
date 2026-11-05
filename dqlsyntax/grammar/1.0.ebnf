@@ -72,6 +72,12 @@ ComparisonOperator = "==" | "!=" | "<=" | ">=" | "<" | ">" .
 Arithmetic         = ArithmeticTerm { Operator ArithmeticTerm } .
 ArithmeticTerm     = Field | number | "(" Arithmetic ")" .
 
+/* A call written on its own, where a host language takes one: which functions
+   exist and what their arguments mean are the host's. */
+
+Call         = unquotedLiteral "(" [ CallArgument { "," CallArgument } ] ")" .
+CallArgument = literal | number .
+
 literal           = quotedString | unquotedLiteral .
 quotedString      = "\"" { quotedCharacter } "\"" .
 unquotedLiteral   = unquotedCharacter { unquotedCharacter } .

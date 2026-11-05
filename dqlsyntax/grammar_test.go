@@ -14,22 +14,26 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const grammarStart = "Expression"
+const (
+	grammarStart     = "Expression"
+	callGrammarStart = "Call"
+)
 
-type refusedQuery struct {
+type refusedSentence struct {
 	Written string `yaml:"written"`
 	Says    string `yaml:"says"`
 }
 
-type queryCorpus struct {
+type sentenceCorpus struct {
 	Admitted map[string][]string `yaml:"admitted"`
-	Refused  []refusedQuery      `yaml:"refused"`
+	Refused  []refusedSentence   `yaml:"refused"`
 }
 
 type grammarVersionFixture struct {
 	version string
 	grammar ebnf.Grammar
-	corpus  queryCorpus
+	corpus  sentenceCorpus
+	calls   sentenceCorpus
 }
 
 // grammarVersionFixtures reads every grammar file and the corpus written for it.
@@ -46,6 +50,7 @@ func grammarVersionFixtures(t *testing.T) []grammarVersionFixture {
 			version: version,
 			grammar: readGrammar(t, grammarFile),
 			corpus:  readCorpus(t, filepath.Join("testdata", "queries-"+version+".yml")),
+			calls:   readCorpus(t, filepath.Join("testdata", "calls-"+version+".yml")),
 		})
 	}
 	return fixtures
@@ -62,19 +67,24 @@ func readGrammar(t *testing.T, grammarFile string) ebnf.Grammar {
 	if err != nil {
 		t.Fatalf("%s is not a grammar: %v", grammarFile, err)
 	}
-	if err := ebnf.Verify(grammar, grammarStart); err != nil {
-		t.Fatalf("%s does not verify from %s: %v", grammarFile, grammarStart, err)
+	sentences := maps.Clone(grammar)
+	sentences["Sentence"] = &ebnf.Production{
+		Name: &ebnf.Name{String: "Sentence"},
+		Expr: ebnf.Alternative{&ebnf.Name{String: grammarStart}, &ebnf.Name{String: callGrammarStart}},
+	}
+	if err := ebnf.Verify(sentences, "Sentence"); err != nil {
+		t.Fatalf("%s does not verify from %s and %s: %v", grammarFile, grammarStart, callGrammarStart, err)
 	}
 	return grammar
 }
 
-func readCorpus(t *testing.T, corpusFile string) queryCorpus {
+func readCorpus(t *testing.T, corpusFile string) sentenceCorpus {
 	t.Helper()
 	raw, err := os.ReadFile(corpusFile)
 	if err != nil {
 		t.Fatalf("open %s: %v", corpusFile, err)
 	}
-	var corpus queryCorpus
+	var corpus sentenceCorpus
 	if err := yaml.Unmarshal(raw, &corpus); err != nil {
 		t.Fatalf("%s: %v", corpusFile, err)
 	}
@@ -87,6 +97,7 @@ func readCorpus(t *testing.T, corpusFile string) queryCorpus {
 // grammarMatcher answers whether a grammar admits the tokens the parser took, carrying every position an expression can reach.
 type grammarMatcher struct {
 	grammar ebnf.Grammar
+	start   string
 	tokens  []grammarToken
 }
 
@@ -100,7 +111,7 @@ var lexicalTokenKinds = map[string][]grammarTokenKind{
 }
 
 func (matcher grammarMatcher) admits() bool {
-	return slices.Contains(matcher.reaches(matcher.grammar[grammarStart].Expr, 0), len(matcher.tokens))
+	return slices.Contains(matcher.reaches(matcher.grammar[matcher.start].Expr, 0), len(matcher.tokens))
 }
 
 func (matcher grammarMatcher) reaches(expression ebnf.Expression, at int) []int {
@@ -199,8 +210,25 @@ func TestEveryAdmittedQueryIsASentenceOfTheGrammarTheParserReads(t *testing.T) {
 					t.Errorf("%s %s: %q: %v", fixture.version, group, query, err)
 					continue
 				}
-				if !(grammarMatcher{grammar: fixture.grammar, tokens: tokens}).admits() {
+				if !(grammarMatcher{grammar: fixture.grammar, start: grammarStart, tokens: tokens}).admits() {
 					t.Errorf("%s %s: %q is no sentence of grammar %s", fixture.version, group, query, fixture.version)
+				}
+			}
+		}
+	}
+}
+
+func TestEveryAdmittedCallIsASentenceOfTheGrammarTheParserReads(t *testing.T) {
+	for _, fixture := range grammarVersionFixtures(t) {
+		for group, calls := range fixture.calls.Admitted {
+			for _, call := range calls {
+				_, tokens, err := parseCallRecordingTokens(call, fixture.version)
+				if err != nil {
+					t.Errorf("%s %s: %q: %v", fixture.version, group, call, err)
+					continue
+				}
+				if !(grammarMatcher{grammar: fixture.grammar, start: callGrammarStart, tokens: tokens}).admits() {
+					t.Errorf("%s %s: %q is no call of grammar %s", fixture.version, group, call, fixture.version)
 				}
 			}
 		}
@@ -218,17 +246,37 @@ func TestEveryRefusedQueryIsRefusedInItsOwnWords(t *testing.T) {
 	}
 }
 
-// A form the grammar declares and no admitted query writes is a form nothing proves.
+func TestEveryRefusedCallIsRefusedInItsOwnWords(t *testing.T) {
+	for _, fixture := range grammarVersionFixtures(t) {
+		for _, refused := range fixture.calls.Refused {
+			_, err := ParseCall(refused.Written, fixture.version)
+			if err == nil || err.Error() != refused.Says {
+				t.Errorf("%s: %q: err = %v, want %q", fixture.version, refused.Written, err, refused.Says)
+			}
+		}
+	}
+}
+
+// A form the grammar declares and no admitted query or call writes is a form nothing proves.
 func TestTheGrammarHasNoFormNoAdmittedQueryWrites(t *testing.T) {
 	for _, fixture := range grammarVersionFixtures(t) {
 		written := map[string]bool{}
 		kinds := map[grammarTokenKind]bool{}
+		record := func(tokens []grammarToken) {
+			for _, token := range tokens {
+				written[token.text], kinds[token.kind] = true, true
+			}
+		}
 		for _, queries := range fixture.corpus.Admitted {
 			for _, query := range queries {
 				_, tokens, _ := parseRecordingTokens(query, fixture.version)
-				for _, token := range tokens {
-					written[token.text], kinds[token.kind] = true, true
-				}
+				record(tokens)
+			}
+		}
+		for _, calls := range fixture.calls.Admitted {
+			for _, call := range calls {
+				_, tokens, _ := parseCallRecordingTokens(call, fixture.version)
+				record(tokens)
 			}
 		}
 		for _, name := range slices.Sorted(maps.Keys(fixture.grammar)) {

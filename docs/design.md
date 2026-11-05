@@ -96,6 +96,12 @@ ComparisonOperator = "==" | "!=" | "<=" | ">=" | "<" | ">" .
 Arithmetic         = ArithmeticTerm { Operator ArithmeticTerm } .
 ArithmeticTerm     = Field | number | "(" Arithmetic ")" .
 
+/* A call written on its own, where a host language takes one: which functions
+   exist and what their arguments mean are the host's. */
+
+Call         = unquotedLiteral "(" [ CallArgument { "," CallArgument } ] ")" .
+CallArgument = literal | number .
+
 literal           = quotedString | unquotedLiteral .
 quotedString      = "\"" { quotedCharacter } "\"" .
 unquotedLiteral   = unquotedCharacter { unquotedCharacter } .
@@ -271,11 +277,20 @@ A blank filter matches every record.
 - `topk`, `bottomk` and `where` apply to the buckets of the function before them: `topk` and `bottomk` order and size its innermost `terms`, and `where` is a `bucket_selector` in it.
 - Arithmetic is refused: a search request answers one query.
 
+## Calls
+
+A call is written on its own where a host language takes one, such as a dashboard variable's choices, in the form of a stage: the function's name, then its arguments in parentheses, separated by commas. An argument is a field name, a number or a quoted string. The parser reads the form; which functions exist and what their arguments mean are the host's.
+
+```
+field_values(job, "__name__:mock_up and env:${env}")
+```
+
 ## Go API
 
 | Package | Entry point | Answers |
 |---|---|---|
 | `dqlsyntax` | `ParseQuery(text, grammarVersion string) (ParsedQuery, error)` | the query's syntax tree; its `ResultKind()` is `ItemsResult` or `TimeSeriesResult` |
+| `dqlsyntax` | `ParseCall(text, grammarVersion string) (Call, error)` | the call's function, lowercased, and its arguments, each a field, a number or a quoted string |
 | `promqlbackend` | `CompileQuery(query ParsedQuery) (string, error)` | the PromQL expression |
 | `opensearchbackend` | `CompileQuery(query ParsedQuery, config BackendConfig) (map[string]any, error)` | the search request body |
 
@@ -297,6 +312,7 @@ An error states what was wrong in the query's own terms:
 - `unknown function "<name>"`
 - `"<function>" cannot follow "<function>"`
 - `"<function>" needs <argument>, not <token>`
+- `a call needs a function, not <token>`
 - `arithmetic combines queries that answer time series`
 - `grammar version <version> is not supported; supported: <versions>`
 

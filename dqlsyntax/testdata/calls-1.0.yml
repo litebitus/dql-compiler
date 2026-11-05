@@ -1,0 +1,27 @@
+# Every `written` here is read twice: grammar/1.0.ebnf must admit it as a Call,
+# and the call parser must take it. `refused` holds what both turn away, with the
+# words the parser's refusal carries.
+
+admitted:
+  arguments:
+    - mock()
+    - mock(job)
+    - mock(job, "__name__:mock_up and env:${env}")
+    - mock(1, 2.5)
+    - Mock(job)
+
+refused:
+  - written: ""
+    says: a call needs a function, not end of query
+  - written: '"mock"(job)'
+    says: a call needs a function, not "\"mock\""
+  - written: mock
+    says: '"mock" needs "(", not end of query'
+  - written: mock(job
+    says: a parenthesis is not closed
+  - written: mock(job,)
+    says: '"mock" needs a field, a number or a quoted string, not ")"'
+  - written: mock(5m)
+    says: '"mock" needs a field, a number or a quoted string, not "5m"'
+  - written: mock(job) | count()
+    says: unexpected "|"
