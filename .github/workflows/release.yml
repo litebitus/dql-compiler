@@ -104,6 +104,15 @@ jobs:
           NEXT: ${{ steps.version.outputs.next }}
         run: gh release create "$NEXT" --title "$NEXT" --notes-file "$RUNNER_TEMP/release-notes.md" --verify-tag
 
+      - name: Summary
+        if: ${{ !inputs.dry_run }}
+        env:
+          NEXT: ${{ steps.version.outputs.next }}
+        run: |
+          set -euo pipefail
+          commit="$(git rev-parse --short=7 HEAD)"
+          echo "Released \`dql-compiler\` \`${NEXT#v}\` from commit \`${commit}\`." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Dry run summary
         if: ${{ inputs.dry_run }}
         run: echo "DRY RUN - would release ${{ steps.version.outputs.next }}"
