@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.0 — 2026-11-06
+
 - Grammar
   - Grammar 1.0: DQL extended with pipe stages and arithmetic between queries.
 - Library
