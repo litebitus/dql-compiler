@@ -192,6 +192,13 @@ From grammar `1.1`, `now()` stands in arithmetic for the time each result is com
 
 A query whose stages are only shaping and result functions answers the backend's items: records, spans or series. A query with a time or statistical function answers time series, one per value of its last grouping. The parsed query states which, so a caller knows to show a table or a chart.
 
+A query ending in an ungrouped `count()` over a selection that matched nothing answers `0` while its source reports, and no result while it does not. Whether a source reports is the backend's configuration, never the query's:
+
+| Backend | A source reports while |
+|---|---|
+| a series backend | the series its reporting filter selects exist |
+| a record backend | a search over its records runs |
+
 ## Backends
 
 A backend is a compiler from the parsed query to one native language. Each takes a configuration stating what the compiler cannot read from the query: where the items live and what kind each field is in that backend. A query a backend cannot compile is refused with the form it cannot compile and why.
@@ -201,7 +208,7 @@ A backend is a compiler from the parsed query to one native language. Each takes
 | LogQL (Log Query Language, Grafana Loki) | the stream labels | stream selector for stream labels, label filters for the rest, line filters for terms |
 | OpenSearch query DSL | the time field, the group limit | a query clause |
 | PPL (Piped Processing Language, OpenSearch) | the source, its time field | `where` |
-| PromQL (Prometheus Query Language) | none | label matchers |
+| PromQL (Prometheus Query Language) | the reporting filter, optional | label matchers |
 | SPL (Search Processing Language, Splunk) | the index | the search |
 | SQL | the dialect, the table, its time column | `WHERE` |
 | TraceQL (Trace Query Language, Grafana Tempo) | each field's attribute scope | a spanset filter |
@@ -248,6 +255,7 @@ The filter compiles to series selectors.
 - `rate` applies to each selector; statistical and result functions apply to the joined result.
 - `quantile` over a classic histogram's bucket series, `__name__:<histogram>_bucket`, compiles to `histogram_quantile` with `le` added to the grouping; over other series, to `quantile`.
 - Arithmetic between queries pairs series with `on (<grouping>)`.
+- With a reporting filter, a query ending in an ungrouped `count()` compiles to `count(<selection>) or on() (count(<reporting>) * 0)`. The reporting filter is a filter alone, with no stages or arithmetic; without one, the count of nothing is no result.
 - `now()` compiles to `time()`.
 - Each selector needs a matcher that cannot match the empty string, as PromQL requires; `__name__` is one. A blank filter is refused for the same reason.
 - A filter expands into at most 64 selectors.
@@ -329,4 +337,4 @@ A refusal names the version, the function or the form it cannot compile, and why
 
 ## Open questions
 
-- A count that is zero when nothing matches. A query over series that exist only while their condition holds answers no series when none holds, the same answer as when the source reports nothing at all. Zero needs an anchor: a series the same source always emits, so the result is `0` while the source reports and empty while it does not. Undecided: the grammar's form for it, how each backend compiles it, and what anchors it.
+- A grouped count that is zero for a group with nothing. A group whose selection matched nothing is absent in both backends, so a grouped count answers only the groups that matched. Its zero needs the groups that should exist, stated with the source's reporting. Undecided: where those groups are stated, and how each backend compiles them.

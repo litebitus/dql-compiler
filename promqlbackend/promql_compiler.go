@@ -2,6 +2,7 @@
 package promqlbackend
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -23,11 +24,21 @@ var refusals = map[string]string{
 	"limit":      "PromQL's limitk is experimental",
 }
 
+// BackendConfig is what the compiler cannot read from a query.
+type BackendConfig struct {
+	// ReportingFilter is a DQL filter selecting the series a source emits while it reports; optional.
+	ReportingFilter string
+}
+
 // CompileQuery answers the PromQL expression a parsed query compiles to.
-func CompileQuery(query dqlsyntax.ParsedQuery) (string, error) {
+func CompileQuery(query dqlsyntax.ParsedQuery, config BackendConfig) (string, error) {
+	reporting, err := reportingSelector(config.ReportingFilter, query.GrammarVersion)
+	if err != nil {
+		return "", err
+	}
 	expression := query.Expression
 	if len(expression.Operands) == 1 {
-		return compileQuery(expression.Operands[0].Query)
+		return compileCountingQuery(expression.Operands[0].Query, reporting)
 	}
 	var compiled strings.Builder
 	for index, operand := range expression.Operands {
@@ -49,7 +60,7 @@ func CompileQuery(query dqlsyntax.ParsedQuery) (string, error) {
 			compiled.WriteString(operand.Number)
 			continue
 		}
-		compiledQuery, err := compileQuery(operand.Query)
+		compiledQuery, err := compileCountingQuery(operand.Query, reporting)
 		if err != nil {
 			return "", err
 		}
@@ -58,6 +69,43 @@ func CompileQuery(query dqlsyntax.ParsedQuery) (string, error) {
 		compiled.WriteString(")")
 	}
 	return compiled.String(), nil
+}
+
+// reportingSelector is the reporting filter compiled to the series it selects, or "" where there is none.
+func reportingSelector(filter, grammarVersion string) (string, error) {
+	if filter == "" {
+		return "", nil
+	}
+	parsed, err := dqlsyntax.ParseQuery(filter, grammarVersion)
+	if err != nil {
+		return "", fmt.Errorf("the reporting filter: %w", err)
+	}
+	operands := parsed.Expression.Operands
+	if len(operands) != 1 || operands[0].Query == nil || len(operands[0].Query.Stages) > 0 {
+		return "", errors.New("the reporting filter is a filter alone, with no stages or arithmetic")
+	}
+	selector, err := compileQuery(operands[0].Query)
+	if err != nil {
+		return "", fmt.Errorf("the reporting filter: %w", err)
+	}
+	return selector, nil
+}
+
+// compileCountingQuery compiles a query; one ending in an ungrouped count answers 0 while the reporting series exist.
+func compileCountingQuery(query *dqlsyntax.Query, reporting string) (string, error) {
+	compiled, err := compileQuery(query)
+	if err != nil || reporting == "" || !endsInUngroupedCount(query) {
+		return compiled, err
+	}
+	return compiled + " or on() (count(" + reporting + ") * 0)", nil
+}
+
+func endsInUngroupedCount(query *dqlsyntax.Query) bool {
+	if len(query.Stages) == 0 {
+		return false
+	}
+	last := query.Stages[len(query.Stages)-1]
+	return last.Function == "count" && len(last.Grouping) == 0
 }
 
 func sharedGrouping(left, right dqlsyntax.Operand) []string {

@@ -12,7 +12,7 @@ func compiled(t *testing.T, text string) (string, error) {
 	if err != nil {
 		t.Fatalf("%q: %v", text, err)
 	}
-	return CompileQuery(parsed)
+	return CompileQuery(parsed, BackendConfig{})
 }
 
 func TestQueriesCompileToPromQL(t *testing.T) {
@@ -65,8 +65,54 @@ func TestNowCompilesToTime(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := `(min by (host) (mock_expiry_seconds)) - time()`
-	if got, err := CompileQuery(parsed); err != nil || got != want {
+	if got, err := CompileQuery(parsed, BackendConfig{}); err != nil || got != want {
 		t.Errorf("got %s (%v), want %s", got, err, want)
+	}
+}
+
+var mockReporting = BackendConfig{ReportingFilter: `__name__:up and job:mock-exporter`}
+
+func compiledReporting(t *testing.T, text string, config BackendConfig) (string, error) {
+	t.Helper()
+	parsed, err := dqlsyntax.ParseQuery(text, "1.1")
+	if err != nil {
+		t.Fatalf("%q: %v", text, err)
+	}
+	return CompileQuery(parsed, config)
+}
+
+func TestAnUngroupedCountAnswersZeroWhileTheSourceReports(t *testing.T) {
+	for text, want := range map[string]string{
+		`__name__:mock_waiting | count()`: `count(mock_waiting) or on() (count(up{job="mock-exporter"}) * 0)`,
+		`(__name__:mock_waiting | count()) / (__name__:mock_pods | count())`: `(count(mock_waiting) or on() (count(up{job="mock-exporter"}) * 0))` +
+			` / (count(mock_pods) or on() (count(up{job="mock-exporter"}) * 0))`,
+		`__name__:mock_waiting | count() by reason`:          `count by (reason) (mock_waiting)`,
+		`__name__:mock_waiting | count() | where(value > 1)`: `count(mock_waiting) > 1`,
+		`__name__:mock_waiting | sum()`:                      `sum(mock_waiting)`,
+	} {
+		got, err := compiledReporting(t, text, mockReporting)
+		if err != nil || got != want {
+			t.Errorf("%q:\n got  %s (%v)\n want %s", text, got, err, want)
+		}
+	}
+}
+
+func TestACountWithoutAReportingFilterIsNoResultForNothing(t *testing.T) {
+	if got, err := compiledReporting(t, `__name__:mock_waiting | count()`, BackendConfig{}); err != nil || got != `count(mock_waiting)` {
+		t.Errorf("got %s (%v)", got, err)
+	}
+}
+
+func TestAReportingFilterIsAFilterAlone(t *testing.T) {
+	for filter, want := range map[string]string{
+		`__name__:up | count()`: "the reporting filter is a filter alone, with no stages or arithmetic",
+		`(__name__:up`:          "the reporting filter: a parenthesis is not closed",
+		`not job:mock-exporter`: "the reporting filter: a selector needs a field that cannot be empty, such as __name__",
+	} {
+		_, err := compiledReporting(t, `__name__:mock_waiting | count()`, BackendConfig{ReportingFilter: filter})
+		if err == nil || err.Error() != want {
+			t.Errorf("%q: err = %v, want %q", filter, err, want)
+		}
 	}
 }
 

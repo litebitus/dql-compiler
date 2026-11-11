@@ -7,6 +7,7 @@
 - Library
   - `dqlsyntax`: a grammar version stated as a major alone floats to that major's newest minor.
   - `promqlbackend`: compiles `now()` to `time()`.
+  - `promqlbackend`: `CompileQuery` takes a `BackendConfig`, whose `ReportingFilter` makes an ungrouped count of nothing answer `0` while the source reports.
 
 ## v0.1.0 — 2026-11-06
 

@@ -23,7 +23,7 @@ parsed, err := dqlsyntax.ParseQuery(`__name__:mock_requests_total and env:mock |
 if err != nil {
 	return err
 }
-expression, err := promqlbackend.CompileQuery(parsed)
+expression, err := promqlbackend.CompileQuery(parsed, promqlbackend.BackendConfig{})
 // sum by (job) (rate(mock_requests_total{env="mock"}[5m]))
 ```
 
