@@ -317,3 +317,7 @@ An error states what was wrong in the query's own terms:
 - `grammar version <version> is not supported; supported: <versions>`
 
 A refusal names the version, the function or the form it cannot compile, and why.
+
+## Open questions
+
+- A count that is zero when nothing matches. A query over series that exist only while their condition holds answers no series when none holds, the same answer as when the source reports nothing at all. Zero needs an anchor: a series the same source always emits, so the result is `0` while the source reports and empty while it does not. Undecided: the grammar's form for it, how each backend compiles it, and what anchors it.
