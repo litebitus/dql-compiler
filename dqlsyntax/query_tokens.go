@@ -270,3 +270,29 @@ func (reader queryReader) numberOperandAt(at int) bool {
 	following, err := reader.stageTokenAt(token.end)
 	return err == nil && following.kind == symbolToken && strings.Contains("+-*/", following.text)
 }
+
+// nowCallEnd answers where a `now()` starting at `at` ends, or -1 when none starts there.
+func (reader queryReader) nowCallEnd(at int) int {
+	name, err := reader.stageTokenAt(at)
+	if err != nil || !name.isKeyword("now") {
+		return -1
+	}
+	opening, err := reader.stageTokenAt(name.end)
+	if err != nil || !opening.isSymbol("(") {
+		return -1
+	}
+	closing, err := reader.stageTokenAt(opening.end)
+	if err != nil || !closing.isSymbol(")") {
+		return -1
+	}
+	return closing.end
+}
+
+func (reader queryReader) nowOperandAt(at int) bool {
+	end := reader.nowCallEnd(at)
+	if end < 0 {
+		return false
+	}
+	following, err := reader.stageTokenAt(end)
+	return err == nil && following.kind == symbolToken && strings.Contains("+-*/", following.text)
+}

@@ -3,7 +3,7 @@ package dqlsyntax
 
 import "strings"
 
-// ParsedQuery is a query read under one grammar version.
+// ParsedQuery is a query read under one grammar version; GrammarVersion is the minor it was read under.
 type ParsedQuery struct {
 	GrammarVersion string
 	Expression     Expression
@@ -33,10 +33,11 @@ type Expression struct {
 	Operators []string
 }
 
-// Operand is a query or a number; Query is nil for a number.
+// Operand is a query, a number, or `now()`, the time a result is computed at; Query is nil for the other two.
 type Operand struct {
 	Query  *Query
 	Number string
+	Now    bool
 }
 
 // Query is a filter and the stages that compute over what it selects; Filter is nil for a blank filter.

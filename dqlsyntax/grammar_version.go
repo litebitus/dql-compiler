@@ -9,9 +9,23 @@ import (
 	"strings"
 )
 
-var latestMinorByMajor = map[int]int{1: 0}
+var latestMinorByMajor = map[int]int{1: 1}
 
-var grammarVersionPattern = regexp.MustCompile(`^(\d+)\.(\d+)$`)
+var grammarVersionPattern = regexp.MustCompile(`^(\d+)(?:\.(\d+))?$`)
+
+// grammarVersionNumber is the version a query is written in, which decides the forms the parser reads.
+type grammarVersionNumber struct {
+	major int
+	minor int
+}
+
+func (version grammarVersionNumber) readsFrom(major, minor int) bool {
+	return version.major == major && version.minor >= minor
+}
+
+func (version grammarVersionNumber) String() string {
+	return fmt.Sprintf("%d.%d", version.major, version.minor)
+}
 
 // SupportedGrammarVersions is the latest version of every major this compiler reads.
 func SupportedGrammarVersions() []string {
@@ -22,16 +36,22 @@ func SupportedGrammarVersions() []string {
 	return supported
 }
 
-func checkGrammarVersion(grammarVersion string) error {
-	version := grammarVersionPattern.FindStringSubmatch(grammarVersion)
+// checkGrammarVersion reads a stated version: a minor names itself, and a major alone floats to its newest minor.
+func checkGrammarVersion(writtenVersion string) (grammarVersionNumber, error) {
+	version := grammarVersionPattern.FindStringSubmatch(writtenVersion)
 	if version == nil {
-		return fmt.Errorf("a grammar version is written <major>.<minor>, not %q", grammarVersion)
+		return grammarVersionNumber{}, fmt.Errorf(
+			"a grammar version is written <major> or <major>.<minor>, not %q", writtenVersion)
 	}
 	major, _ := strconv.Atoi(version[1])
-	minor, _ := strconv.Atoi(version[2])
-	if latestMinor, known := latestMinorByMajor[major]; !known || minor > latestMinor {
-		return fmt.Errorf("grammar version %s is not supported; supported: %s",
-			grammarVersion, strings.Join(SupportedGrammarVersions(), ", "))
+	latestMinor, known := latestMinorByMajor[major]
+	minor := latestMinor
+	if version[2] != "" {
+		minor, _ = strconv.Atoi(version[2])
 	}
-	return nil
+	if !known || minor > latestMinor {
+		return grammarVersionNumber{}, fmt.Errorf("grammar version %s is not supported; supported: %s",
+			writtenVersion, strings.Join(SupportedGrammarVersions(), ", "))
+	}
+	return grammarVersionNumber{major: major, minor: minor}, nil
 }

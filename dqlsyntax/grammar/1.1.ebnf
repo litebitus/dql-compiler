@@ -1,0 +1,97 @@
+/* The grammar a query is written in. This file is the spec the parser answers to.
+
+   An uppercase production is structure the parser reads. A lowercase one is a
+   single token the scanner answers with, and its body says what that token
+   looks like: an unquoted literal is any character but a specialCharacter,
+   beginning no keyword unless escaped, and a `$` before a name opens a
+   variableReference, never a bare `$name`. Keywords and function names read in
+   any case. */
+
+Expression = Operand { Operator Operand } .
+Operand    = "(" Query ")" | Query | number | Now .
+Operator   = "+" | "-" | "*" | "/" .
+Now        = "now" "(" ")" .
+
+Query = [ OrQuery ] { "|" Shaping } [ "|" Time ] { "|" ( Statistic | Where ) } { "|" Result } .
+
+/* The filter, as DQL writes it. */
+
+OrQuery              = AndQuery { [ "or" ] AndQuery } .
+AndQuery             = NotQuery { "and" NotQuery } .
+NotQuery             = [ "not" ] SubQuery .
+SubQuery             = "(" OrQuery ")"
+                     | NestedQuery
+                     | RangeExpression
+                     | FieldValueExpression
+                     | Value .
+NestedQuery          = Field ":" "{" OrQuery "}" .
+RangeExpression      = Field RangeOperator literal .
+FieldValueExpression = Field ":" ListOfValues .
+ListOfValues         = "(" OrValues ")" | Value .
+OrValues             = AndValues { "or" AndValues } .
+AndValues            = NotValues { "and" NotValues } .
+NotValues            = [ "not" ] ListOfValues .
+RangeOperator        = "<=" | ">=" | "<" | ">" .
+Field                = literal .
+Value                = literal .
+
+/* The stages, in the order a query runs them, one production per function. */
+
+Shaping   = Dedup | Eval | Extract | Fields | Rename .
+Time      = PerSecond | Rate .
+Statistic = Avg | Count | DistinctCount | Max | Min | Quantile | Stdev | Sum .
+Result    = Bottomk | Limit | Sort | SortDesc | Topk | Where .
+
+Dedup   = "dedup" "(" Field ")" .
+Eval    = "eval" "(" Field "=" Arithmetic ")" .
+Extract = "extract" "(" Field "," quotedString ")" .
+Fields  = "fields" "(" Field { "," Field } ")" .
+Rename  = "rename" "(" Field "," Field ")" .
+
+PerSecond = "per_second" "(" duration ")" [ Grouping ] .
+Rate      = "rate" "(" duration ")" .
+
+Avg           = "avg" "(" [ Field ] ")" [ Grouping ] .
+Count         = "count" "(" ")" [ Grouping ] .
+DistinctCount = "distinct_count" "(" Field ")" [ Grouping ] .
+Max           = "max" "(" [ Field ] ")" [ Grouping ] .
+Min           = "min" "(" [ Field ] ")" [ Grouping ] .
+Quantile      = "quantile" "(" number [ "," Field ] ")" [ Grouping ] .
+Stdev         = "stdev" "(" [ Field ] ")" [ Grouping ] .
+Sum           = "sum" "(" [ Field ] ")" [ Grouping ] .
+
+Bottomk  = "bottomk" "(" wholeNumber ")" [ Grouping ] .
+Limit    = "limit" "(" wholeNumber ")" .
+Sort     = "sort" "(" ResultField ")" .
+SortDesc = "sort_desc" "(" ResultField ")" .
+Topk     = "topk" "(" wholeNumber ")" [ Grouping ] .
+Where    = "where" "(" ResultField ComparisonOperator number ")" .
+
+Grouping           = "by" Field { "," Field } .
+ResultField        = "value" | Field .
+ComparisonOperator = "==" | "!=" | "<=" | ">=" | "<" | ">" .
+Arithmetic         = ArithmeticTerm { Operator ArithmeticTerm } .
+ArithmeticTerm     = Field | number | "(" Arithmetic ")" .
+
+/* A call written on its own, where a host language takes one: which functions
+   exist and what their arguments mean are the host's. */
+
+Call         = unquotedLiteral "(" [ CallArgument { "," CallArgument } ] ")" .
+CallArgument = literal | number .
+
+literal           = quotedString | unquotedLiteral .
+quotedString      = "\"" { quotedCharacter } "\"" .
+unquotedLiteral   = unquotedCharacter { unquotedCharacter } .
+quotedCharacter   = "\\" any | any .
+unquotedCharacter = "\\" specialCharacter | "\\" keyword | "*" | variableReference | any .
+variableReference = "$" "{" variableName "}" .
+variableName      = letter { letter | digit | "_" } .
+specialCharacter  = "\\" | "(" | ")" | ":" | "<" | ">" | "\"" | "*" | "{" | "}" | "|" .
+keyword           = "or" | "and" | "not" .
+duration          = wholeNumber durationUnit { wholeNumber durationUnit } .
+durationUnit      = "ms" | "s" | "m" | "h" | "d" | "w" | "y" .
+number            = [ "-" ] wholeNumber [ "." wholeNumber ] .
+wholeNumber       = digit { digit } .
+digit             = "0" … "9" .
+letter            = "a" … "z" | "A" … "Z" | "_" .
+any               = "\u0000" … "\U0010FFFF" .

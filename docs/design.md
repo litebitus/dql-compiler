@@ -11,6 +11,7 @@ The grammar is versioned `major.minor`, apart from the Go module's release tags.
 - A minor version adds to the grammar: a query written for `1.2` compiles under every `1.x` from `1.2` on.
 - A major version changes what an existing query means. The compiler keeps compiling every major version it has shipped.
 - The caller states the version a query is written in; the query text carries none.
+- A minor names itself, and a major alone, such as `1`, floats to the newest minor the compiler holds. The parsed query states the minor it was read under.
 - A major the compiler does not know, or a minor newer than its own, is refused with the versions it supports.
 
 ## Grammar
@@ -19,7 +20,7 @@ The grammar is EBNF as Go's `golang.org/x/exp/ebnf` reads it: juxtaposition is s
 
 <!-- query grammar: written by `make grammar` from dqlsyntax/grammar; edit it there -->
 
-Version `1.0`.
+Version `1.1`.
 
 ```ebnf
 /* The grammar a query is written in. This file is the spec the parser answers to.
@@ -32,8 +33,9 @@ Version `1.0`.
    any case. */
 
 Expression = Operand { Operator Operand } .
-Operand    = "(" Query ")" | Query | number .
+Operand    = "(" Query ")" | Query | number | Now .
 Operator   = "+" | "-" | "*" | "/" .
+Now        = "now" "(" ")" .
 
 Query = [ OrQuery ] { "|" Shaping } [ "|" Time ] { "|" ( Statistic | Where ) } { "|" Result } .
 
@@ -180,6 +182,12 @@ Queries whose results are time series combine with `+`, `-`, `*` and `/`, as do 
 (status:5* | per_second(5m) by job) / (status:* | per_second(5m) by job) * 100
 ```
 
+From grammar `1.1`, `now()` stands in arithmetic for the time each result is computed at, in seconds since the Unix epoch.
+
+```
+(__name__:mock_certificate_expiry_seconds | min() by host) - now()
+```
+
 ## Result
 
 A query whose stages are only shaping and result functions answers the backend's items: records, spans or series. A query with a time or statistical function answers time series, one per value of its last grouping. The parsed query states which, so a caller knows to show a table or a chart.
@@ -240,6 +248,7 @@ The filter compiles to series selectors.
 - `rate` applies to each selector; statistical and result functions apply to the joined result.
 - `quantile` over a classic histogram's bucket series, `__name__:<histogram>_bucket`, compiles to `histogram_quantile` with `le` added to the grouping; over other series, to `quantile`.
 - Arithmetic between queries pairs series with `on (<grouping>)`.
+- `now()` compiles to `time()`.
 - Each selector needs a matcher that cannot match the empty string, as PromQL requires; `__name__` is one. A blank filter is refused for the same reason.
 - A filter expands into at most 64 selectors.
 - A term with no field, a range and a nested query are refused: a series carries flat labels, not text, and a label matcher has no range.

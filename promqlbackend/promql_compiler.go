@@ -41,6 +41,10 @@ func CompileQuery(query dqlsyntax.ParsedQuery) (string, error) {
 				compiled.WriteString(") ")
 			}
 		}
+		if operand.Now {
+			compiled.WriteString("time()")
+			continue
+		}
 		if operand.Query == nil {
 			compiled.WriteString(operand.Number)
 			continue

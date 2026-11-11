@@ -59,6 +59,17 @@ func TestQueriesCompileToPromQL(t *testing.T) {
 	}
 }
 
+func TestNowCompilesToTime(t *testing.T) {
+	parsed, err := dqlsyntax.ParseQuery(`(__name__:mock_expiry_seconds | min() by host) - now()`, "1.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `(min by (host) (mock_expiry_seconds)) - time()`
+	if got, err := CompileQuery(parsed); err != nil || got != want {
+		t.Errorf("got %s (%v), want %s", got, err, want)
+	}
+}
+
 func TestFormsPromQLHasNoFormForAreRefused(t *testing.T) {
 	for text, want := range map[string]string{
 		`mock`:                              "a term with no field does not compile to PromQL: a series carries labels, not text",

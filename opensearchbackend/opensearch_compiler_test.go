@@ -74,6 +74,17 @@ func TestStagesCompileToTheSearchRequest(t *testing.T) {
 	}
 }
 
+func TestArithmeticWithNowIsRefused(t *testing.T) {
+	parsed, err := dqlsyntax.ParseQuery(`(app:mock | max(expiry) by host) - now()`, "1.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "arithmetic does not compile to the OpenSearch query DSL: a search request answers one query"
+	if _, err := CompileQuery(parsed, mockConfig); err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}
+
 func TestFormsTheQueryDSLHasNoFormForAreRefused(t *testing.T) {
 	for text, want := range map[string]string{
 		`(a | count() by app) / (b | count() by app)`:  "arithmetic does not compile to the OpenSearch query DSL: a search request answers one query",

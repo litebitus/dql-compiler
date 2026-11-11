@@ -37,7 +37,7 @@ func ParseCall(text, grammarVersion string) (Call, error) {
 }
 
 func parseCallRecordingTokens(text, grammarVersion string) (Call, []grammarToken, error) {
-	if err := checkGrammarVersion(grammarVersion); err != nil {
+	if _, err := checkGrammarVersion(grammarVersion); err != nil {
 		return Call{}, nil, err
 	}
 	parser := &queryParser{reader: queryReader{runes: []rune(text)}}

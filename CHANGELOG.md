@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Grammar
+  - Grammar 1.1: `now()` in arithmetic, the time each result is computed at.
+- Library
+  - `dqlsyntax`: a grammar version stated as a major alone floats to that major's newest minor.
+  - `promqlbackend`: compiles `now()` to `time()`.
+
 ## v0.1.0 — 2026-11-06
 
 - Grammar

@@ -31,20 +31,22 @@ type grammarToken struct {
 
 type queryParser struct {
 	reader   queryReader
+	version  grammarVersionNumber
 	at       int
 	recorded []grammarToken
 }
 
 func parseRecordingTokens(text, grammarVersion string) (ParsedQuery, []grammarToken, error) {
-	if err := checkGrammarVersion(grammarVersion); err != nil {
+	version, err := checkGrammarVersion(grammarVersion)
+	if err != nil {
 		return ParsedQuery{}, nil, err
 	}
-	parser := &queryParser{reader: queryReader{runes: []rune(text)}}
+	parser := &queryParser{reader: queryReader{runes: []rune(text)}, version: version}
 	expression, err := parser.parseExpression()
 	if err != nil {
 		return ParsedQuery{}, parser.recorded, err
 	}
-	return ParsedQuery{GrammarVersion: grammarVersion, Expression: expression}, parser.recorded, nil
+	return ParsedQuery{GrammarVersion: version.String(), Expression: expression}, parser.recorded, nil
 }
 
 func (parser *queryParser) take(token queryToken, kind grammarTokenKind) {
@@ -143,13 +145,26 @@ func (parser *queryParser) parseOperand(first bool) (Operand, bool, error) {
 		parser.take(closing, grammarSymbolToken)
 		return Operand{Query: query}, true, nil
 	}
+	readsNow := parser.version.readsFrom(1, 1)
+	startsNow := !first && parser.reader.nowCallEnd(start) >= 0 || parser.reader.nowOperandAt(start)
+	if readsNow && startsNow {
+		for _, kind := range []grammarTokenKind{grammarWordToken, grammarSymbolToken, grammarSymbolToken} {
+			token, _ := parser.peekStage()
+			parser.take(token, kind)
+		}
+		return Operand{Now: true}, true, nil
+	}
 	if !first || parser.reader.numberOperandAt(start) {
 		number, err := parser.peekStage()
 		if err != nil {
 			return Operand{}, false, err
 		}
 		if number.kind != numberToken {
-			return Operand{}, false, fmt.Errorf("arithmetic needs a query in parentheses or a number, not %s", describeToken(number))
+			operandForms := "a query in parentheses or a number"
+			if readsNow {
+				operandForms = "a query in parentheses, a number or now()"
+			}
+			return Operand{}, false, fmt.Errorf("arithmetic needs %s, not %s", operandForms, describeToken(number))
 		}
 		parser.take(number, grammarNumberToken)
 		return Operand{Number: number.text}, true, nil

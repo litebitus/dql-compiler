@@ -19,7 +19,7 @@ func TestACallParsesIntoItsFunctionAndArguments(t *testing.T) {
 
 func TestACallInAnUnsupportedGrammarVersionIsRefused(t *testing.T) {
 	_, err := ParseCall("mock()", "2.0")
-	if want := "grammar version 2.0 is not supported; supported: 1.0"; err == nil || err.Error() != want {
+	if want := "grammar version 2.0 is not supported; supported: 1.1"; err == nil || err.Error() != want {
 		t.Errorf("err = %v, want %q", err, want)
 	}
 }

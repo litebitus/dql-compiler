@@ -139,3 +139,5 @@ refused:
     says: arithmetic combines queries that answer time series
   - written: (app:mock | count()) / app:other
     says: arithmetic needs a query in parentheses or a number, not "app:other"
+  - written: (app:mock | count()) - now()
+    says: arithmetic needs a query in parentheses or a number, not "now"

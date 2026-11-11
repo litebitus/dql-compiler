@@ -97,6 +97,19 @@ func TestArithmeticJoinsParenthesizedQueriesAndNumbers(t *testing.T) {
 	}
 }
 
+func TestNowIsAnArithmeticOperandFromGrammarOneOne(t *testing.T) {
+	parsed, err := ParseQuery(`(a | min() by host) - now()`, "1.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operands := parsed.Expression.Operands; len(operands) != 2 || !operands[1].Now || operands[1].Query != nil {
+		t.Errorf("operands = %#v", operands)
+	}
+	if parsed.ResultKind() != TimeSeriesResult {
+		t.Errorf("result kind = %v, want time series", parsed.ResultKind())
+	}
+}
+
 func TestAParenthesizedFilterGroupIsNoArithmeticOperand(t *testing.T) {
 	parsed := parsedQuery(t, `(job:a or job:b) and env:c | count()`)
 	if len(parsed.Expression.Operands) != 1 || len(parsed.Expression.Operands[0].Query.Stages) != 1 {
@@ -121,13 +134,27 @@ func TestTheResultKindFollowsTheStages(t *testing.T) {
 
 func TestAGrammarVersionOutsideTheSupportedIsRefused(t *testing.T) {
 	for version, want := range map[string]string{
-		"1.1":    "grammar version 1.1 is not supported; supported: 1.0",
-		"2.0":    "grammar version 2.0 is not supported; supported: 1.0",
-		"latest": `a grammar version is written <major>.<minor>, not "latest"`,
+		"1.2":    "grammar version 1.2 is not supported; supported: 1.1",
+		"2.0":    "grammar version 2.0 is not supported; supported: 1.1",
+		"2":      "grammar version 2 is not supported; supported: 1.1",
+		"latest": `a grammar version is written <major> or <major>.<minor>, not "latest"`,
+		"1.":     `a grammar version is written <major> or <major>.<minor>, not "1."`,
 	} {
 		if _, err := ParseQuery("a", version); err == nil || err.Error() != want {
 			t.Errorf("%s: err = %v, want %q", version, err, want)
 		}
+	}
+}
+
+func TestAMajorAloneFloatsToItsNewestMinor(t *testing.T) {
+	for stated, want := range map[string]string{"1": "1.1", "1.0": "1.0", "1.1": "1.1"} {
+		parsed, err := ParseQuery("a", stated)
+		if err != nil || parsed.GrammarVersion != want {
+			t.Errorf("%s: read under %q (%v), want %q", stated, parsed.GrammarVersion, err, want)
+		}
+	}
+	if _, err := ParseQuery("(a | min()) - now()", "1"); err != nil {
+		t.Errorf("a query stating major 1 reads now(), which 1.1 adds: %v", err)
 	}
 }
 
