@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.1 — 2026-11-11
+
 - Grammar
   - Grammar 1.1: `now()` in arithmetic, the time each result is computed at.
 - Library

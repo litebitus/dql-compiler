@@ -2,7 +2,7 @@
 
 Each version is the grammar a caller states a query is written in, and the grammar file of that name. A version not yet released is headed `## <version> — unreleased`; the release workflow stamps it with the compiler release that ships it and the date.
 
-## 1.1 — unreleased
+## 1.1 — compiler v0.1.1, 2026-11-11
 
 - `now()` in arithmetic, the time each result is computed at.
 
