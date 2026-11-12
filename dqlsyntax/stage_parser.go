@@ -74,8 +74,11 @@ func (parser *queryParser) parseStage(order *stageOrder) (Stage, error) {
 	if err != nil {
 		return Stage{}, err
 	}
-	if !closing.isSymbol(")") {
+	switch {
+	case closing.kind == endToken:
 		return Stage{}, errors.New("a parenthesis is not closed")
+	case !closing.isSymbol(")"):
+		return Stage{}, fmt.Errorf("%q needs \")\", not %s", function, describeToken(closing))
 	}
 	parser.take(closing, grammarSymbolToken)
 	if spec.Grouped {

@@ -131,6 +131,12 @@ refused:
     says: '"eval" needs "=", not "latency_ms"'
   - written: app:mock | count(
     says: a parenthesis is not closed
+  - written: app:mock | count(a)
+    says: '"count" needs ")", not "a"'
+  - written: 'app:mock | count("a")'
+    says: '"count" needs ")", not "\"a\""'
+  - written: app:mock | rate(5m 1m)
+    says: '"rate" needs ")", not "1m"'
   - written: app:mock | count() by
     says: '"by" needs a field, not end of query'
   - written: app:mock | count() app

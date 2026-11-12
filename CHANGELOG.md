@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Library
+  - `dqlsyntax`: a stage holding more than its function's arguments is refused as `"count" needs ")", not "a"`, not as an unclosed parenthesis.
+
 ## v0.1.3 — 2026-11-12
 
 - Library
