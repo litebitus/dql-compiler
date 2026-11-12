@@ -10,7 +10,7 @@ One query language for every search backend: DQL, the query language of OpenSear
 - A versioned grammar: the caller states the version a query is written in, and the compiler keeps compiling every major it has shipped.
 - Backends: PromQL and the OpenSearch query DSL. A form a backend has no equivalent for is refused with the reason.
 
-The language, its grammar and each backend's rules are in [docs/design.md](docs/design.md).
+The language, its grammar and each backend's rules are in [docs/design.md](docs/design.md). Queries and what each compiles to are in [examples/](examples), one folder per backend; the tests compile every one.
 
 ## Usage
 

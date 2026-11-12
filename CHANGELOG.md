@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Library
+  - `promqlbackend`: arithmetic with a side grouping by more fields pairs each of its series with the other side's one, and the result keeps its fields.
+- Development
+  - `examples/`: queries and what each compiles to, compiled by the tests.
+
 ## v0.1.1 — 2026-11-11
 
 - Grammar

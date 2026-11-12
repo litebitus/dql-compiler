@@ -1,0 +1,48 @@
+grammar_version: "1.1"
+
+examples:
+  - description: Each job's share of requests answered with a 5xx status, in percent.
+    query: >-
+      (__name__:mock_requests_total and status:5* | rate(5m) | sum() by job)
+      / (__name__:mock_requests_total | rate(5m) | sum() by job)
+      * 100
+    promql: >-
+      (sum by (job) (rate(mock_requests_total{status=~"5.*"}[5m])))
+      / on (job) (sum by (job) (rate(mock_requests_total[5m])))
+      * 100
+
+  - description: Each status's share of its job's requests, in percent.
+    query: >-
+      (__name__:mock_requests_total | rate(5m) | sum() by job, status)
+      / (__name__:mock_requests_total | rate(5m) | sum() by job)
+      * 100
+    promql: >-
+      (sum by (job, status) (rate(mock_requests_total[5m])))
+      / on (job) group_left () (sum by (job) (rate(mock_requests_total[5m])))
+      * 100
+
+  - description: Each job's share of all requests, in percent.
+    query: >-
+      (__name__:mock_requests_total | rate(5m) | sum() by job)
+      / (__name__:mock_requests_total | rate(5m) | sum())
+      * 100
+    promql: >-
+      (sum by (job) (rate(mock_requests_total[5m])))
+      / on () group_left () (sum(rate(mock_requests_total[5m])))
+      * 100
+
+  - description: The seconds left on each host's certificate.
+    query: >-
+      (__name__:mock_certificate_expiry_seconds | min() by host) - now()
+    promql: >-
+      (min by (host) (mock_certificate_expiry_seconds)) - time()
+
+  - description: The days left on each host's certificate, with the issuer an info series states.
+    query: >-
+      (__name__:mock_certificate_expiry_seconds | min() by host)
+      * (__name__:mock_certificate_info | max() by host, issuer)
+      / 86400 - now() / 86400
+    promql: >-
+      (min by (host) (mock_certificate_expiry_seconds))
+      * on (host) group_right () (max by (host, issuer) (mock_certificate_info))
+      / 86400 - time() / 86400

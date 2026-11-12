@@ -40,17 +40,17 @@ func CompileQuery(query dqlsyntax.ParsedQuery, config BackendConfig) (string, er
 	if len(expression.Operands) == 1 {
 		return compileCountingQuery(expression.Operands[0].Query, reporting)
 	}
+	clauses, err := pairingClauses(expression)
+	if err != nil {
+		return "", err
+	}
 	var compiled strings.Builder
 	for index, operand := range expression.Operands {
 		if index > 0 {
 			compiled.WriteString(" ")
 			compiled.WriteString(expression.Operators[index-1])
 			compiled.WriteString(" ")
-			if shared := sharedGrouping(expression.Operands[index-1], operand); len(shared) > 0 {
-				compiled.WriteString("on (")
-				compiled.WriteString(strings.Join(shared, ", "))
-				compiled.WriteString(") ")
-			}
+			compiled.WriteString(clauses[index-1])
 		}
 		if operand.Now {
 			compiled.WriteString("time()")
@@ -106,29 +106,6 @@ func endsInUngroupedCount(query *dqlsyntax.Query) bool {
 	}
 	last := query.Stages[len(query.Stages)-1]
 	return last.Function == "count" && len(last.Grouping) == 0
-}
-
-func sharedGrouping(left, right dqlsyntax.Operand) []string {
-	if left.Query == nil || right.Query == nil {
-		return nil
-	}
-	rightGrouping := lastGrouping(right.Query)
-	var shared []string
-	for _, field := range lastGrouping(left.Query) {
-		if slices.Contains(rightGrouping, field) {
-			shared = append(shared, field)
-		}
-	}
-	return shared
-}
-
-func lastGrouping(query *dqlsyntax.Query) []string {
-	for index := len(query.Stages) - 1; index >= 0; index-- {
-		if category := dqlsyntax.Functions[query.Stages[index].Function].Category; category == dqlsyntax.StatisticCategory {
-			return query.Stages[index].Grouping
-		}
-	}
-	return nil
 }
 
 // compiledExpression is PromQL text and whether it is a union, which binds looser than a comparison.

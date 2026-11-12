@@ -182,6 +182,12 @@ Queries whose results are time series combine with `+`, `-`, `*` and `/`, as do 
 (status:5* | per_second(5m) by job) / (status:* | per_second(5m) by job) * 100
 ```
 
+Where one side groups by more fields, each of its series pairs with the other side's one series, and the result keeps its fields.
+
+```
+(status:* | per_second(5m) by job, status) / (status:* | per_second(5m) by job) * 100
+```
+
 From grammar `1.1`, `now()` stands in arithmetic for the time each result is computed at, in seconds since the Unix epoch.
 
 ```
@@ -254,7 +260,6 @@ The filter compiles to series selectors.
 - A filter with `or` across fields is rewritten into a disjunction of conjunctions. Each conjunction is one selector, and the selectors are joined with PromQL's `or`.
 - `rate` applies to each selector; statistical and result functions apply to the joined result.
 - `quantile` over a classic histogram's bucket series, `__name__:<histogram>_bucket`, compiles to `histogram_quantile` with `le` added to the grouping; over other series, to `quantile`.
-- Arithmetic between queries pairs series with `on (<grouping>)`.
 - With a reporting filter, a query ending in an ungrouped `count()` compiles to `count(<selection>) or on() (count(<reporting>) * 0)`. The reporting filter is a filter alone, with no stages or arithmetic; without one, the count of nothing is no result.
 - `now()` compiles to `time()`.
 - Each selector needs a matcher that cannot match the empty string, as PromQL requires; `__name__` is one. A blank filter is refused for the same reason.
@@ -270,6 +275,15 @@ compiles to
 ```
 sum by (job) (rate(mock_requests_total{job="mock-api"}[5m]) or rate(mock_requests_total{env="mock"}[5m]))
 ```
+
+Arithmetic between queries pairs the series either side of an operator by what each side groups by.
+
+| The sides group by | PromQL pairs them with |
+|---|---|
+| the same fields | `on (<fields>)` |
+| more fields on the left | `on (<shared fields>) group_left ()` |
+| more fields on the right | `on (<shared fields>) group_right ()` |
+| a field each that the other lacks | refused: PromQL pairs many series with one |
 
 ### OpenSearch query DSL
 
