@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Library
+  - `dqlsyntax`: a parsed query's `QueryResultFields()` answers the fields each series of its result carries, where known.
+
 ## v0.1.2 — 2026-11-12
 
 - Library

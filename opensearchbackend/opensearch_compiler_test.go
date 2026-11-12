@@ -62,6 +62,7 @@ func TestStagesCompileToTheSearchRequest(t *testing.T) {
 		`app:mock | count()`:                                                 `{"aggs":{"value":{"filter":{"match_all":{}}}},"query":{"match":{"app":"mock"}},"size":0}`,
 		`app:mock | count() by app, env`:                                     `{"aggs":{"by_app":{"aggs":{"by_env":{"terms":{"field":"env","size":50}}},"terms":{"field":"app","size":50}}},"query":{"match":{"app":"mock"}},"size":0}`,
 		`app:mock | avg(latency_ms) by app | topk(5)`:                        `{"aggs":{"by_app":{"aggs":{"value":{"avg":{"field":"latency_ms"}}},"terms":{"field":"app","order":{"value":"desc"},"size":5}}},"query":{"match":{"app":"mock"}},"size":0}`,
+		`app:mock | count() by app | bottomk(3)`:                             `{"aggs":{"by_app":{"terms":{"field":"app","order":{"_count":"asc"},"size":3}}},"query":{"match":{"app":"mock"}},"size":0}`,
 		`app:mock | count() by app | where(value > 100)`:                     `{"aggs":{"by_app":{"aggs":{"where":{"bucket_selector":{"buckets_path":{"value":"_count"},"script":"params.value > 100"}}},"terms":{"field":"app","size":50}}},"query":{"match":{"app":"mock"}},"size":0}`,
 		`app:mock | distinct_count(user)`:                                    `{"aggs":{"value":{"cardinality":{"field":"user"}}},"query":{"match":{"app":"mock"}},"size":0}`,
 		`app:mock | quantile(0.95, latency_ms)`:                              `{"aggs":{"value":{"percentiles":{"field":"latency_ms","percents":[95]}}},"query":{"match":{"app":"mock"}},"size":0}`,
@@ -97,6 +98,11 @@ func TestFormsTheQueryDSLHasNoFormForAreRefused(t *testing.T) {
 		`app:mock | where(value > 5) | count() by app`: `"where" compiles to the OpenSearch query DSL after the function whose buckets it selects`,
 		`app:mock | count() by app | topk(5) by env`:   `"topk" compiles to the OpenSearch query DSL over the grouping of the statistic before it`,
 		`app:mock | stdev(x) by app | topk(5)`:         `"topk" does not compile to the OpenSearch query DSL over a multi-value statistic`,
+		`app:mock | dedup(trace_id) | count()`:         `"dedup" does not compile to the OpenSearch query DSL beside an aggregation`,
+		`app:mock | count() by app | where(x > 5)`:     `"where" compares a result's value in the OpenSearch query DSL`,
+		`app:mock | count() by app | limit(5)`:         `"limit" does not compile to the OpenSearch query DSL over time series`,
+		`app:mock | count() by app | sort(value)`:      `"sort" does not compile to the OpenSearch query DSL over time series`,
+		`app:mock | per_second(0m)`:                    `a duration of "0m" holds no time`,
 	} {
 		if _, err := compiledJSON(t, text, mockConfig); err == nil || err.Error() != want {
 			t.Errorf("%q: err = %v, want %q", text, err, want)

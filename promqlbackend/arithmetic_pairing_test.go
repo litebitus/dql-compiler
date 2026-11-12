@@ -52,6 +52,8 @@ func TestSidesPairAsPromQLReadsTheExpression(t *testing.T) {
 		mockByJobStatus + ` / ` + mockByJob + ` / ` + mockByJobStatus: sumByJobStatus + ` / on (job) group_left () ` + sumByJob +
 			` / on (job, status) ` + sumByJobStatus,
 		mockByJob + ` - 1 - ` + mockUngrouped: sumByJob + ` - 1 - on () group_left () ` + sumUngrouped,
+		mockByJob + ` / ` + mockByJobStatus + ` / ` + `(__name__:mock_requests | sum() by status)`: sumByJob +
+			` / on (job) group_right () ` + sumByJobStatus + ` / on (status) group_left () (sum by (status) (mock_requests))`,
 	} {
 		got, err := compiledArithmetic(t, text)
 		if err != nil || got != want {
@@ -82,6 +84,8 @@ func TestSidesEachGroupingByAFieldTheOtherLacksAreRefused(t *testing.T) {
 	for _, text := range []string{
 		mockByJobStatus + ` / ` + mockByJobEnv,
 		mockByJob + ` + ` + mockByJobStatus + ` / ` + mockByJobEnv,
+		mockByJobStatus + ` + ` + mockByJobEnv,
+		mockByJobStatus + ` + ` + mockByJobEnv + ` - 1`,
 	} {
 		if _, err := compiledArithmetic(t, text); err == nil || err.Error() != want {
 			t.Errorf("%q: err = %v, want %q", text, err, want)

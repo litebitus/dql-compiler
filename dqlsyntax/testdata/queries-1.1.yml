@@ -40,6 +40,7 @@ admitted:
   shaping:
     - app:mock | dedup(trace_id)
     - app:mock | eval(seconds = latency_ms / 1000)
+    - app:mock | eval(seconds = (latency_ms + 1) * 2)
     - 'app:mock | extract(message, "id=(?P<id>\\w+)")'
     - app:mock | fields(app, message)
     - app:mock | rename(message, line)
@@ -81,6 +82,10 @@ admitted:
     - (status:5* | per_second(5m) by job) / (status:* | per_second(5m) by job) * 100
     - (app:mock | rate(5m) | sum()) + (app:other | rate(5m) | sum())
     - (app:mock | rate(5m) | sum()) - 0.5
+    - (app:mock | count()) + (app:other | count()) + (app:third | count())
+    - '(app:mock | extract(message, "a)") | count()) / 2'
+    - '(app:mock | extract(message, "a|b") | count()) / 2'
+    - (app:\| | count()) / 2
 
   now:
     - (__name__:mock_expiry_seconds | min() by host) - now()
@@ -144,3 +149,77 @@ refused:
     says: arithmetic combines queries that answer time series
   - written: (app:mock | count()) / app:other
     says: arithmetic needs a query in parentheses, a number or now(), not "app:other"
+  - written: (app:mock | count()) - now
+    says: arithmetic needs a query in parentheses, a number or now(), not "now"
+  - written: (app:mock | count()) - now(
+    says: arithmetic needs a query in parentheses, a number or now(), not "now"
+  - written: (app:mock | count()) / (app:mock | count()
+    says: a parenthesis is not closed
+  - written: app:mock | 5
+    says: a stage needs a function, not "5"
+  - written: app:mock | count x
+    says: '"count" needs "(", not "x"'
+  - written: app:mock | fields()
+    says: '"fields" needs a field, not ")"'
+  - written: app:mock | eval(x = )
+    says: '"eval" needs a field or a number, not ")"'
+  - written: app:mock | eval(x = (latency_ms + 1)
+    says: a parenthesis is not closed
+  - written: latency_ms > "open
+    says: a range on latency_ms needs a value
+  - written: (app:mock | count()) / ("open
+    says: a quote is not closed
+  - written: (app:mock | count()) / "open
+    says: a quote is not closed
+  - written: a or "open
+    says: a quote is not closed
+  - written: a and "open
+    says: a quote is not closed
+  - written: not "open
+    says: a quote is not closed
+  - written: ("open
+    says: a quote is not closed
+  - written: app:"open
+    says: a quote is not closed
+  - written: app:("open
+    says: a quote is not closed
+  - written: app:(a or "open
+    says: a quote is not closed
+  - written: app:(a and "open
+    says: a quote is not closed
+  - written: app:(not "open
+    says: a quote is not closed
+  - written: items:{ "open
+    says: a quote is not closed
+  - written: a "open
+    says: a quote is not closed
+  - written: app:mock | "open
+    says: a quote is not closed
+  - written: app:mock | count "open
+    says: a quote is not closed
+  - written: app:mock | rate("open
+    says: a quote is not closed
+  - written: app:mock | rate(5m "open
+    says: a quote is not closed
+  - written: app:mock | count() by "open
+    says: a quote is not closed
+  - written: app:mock | eval("open
+    says: a quote is not closed
+  - written: app:mock | eval(x "open
+    says: a quote is not closed
+  - written: app:mock | eval(x = latency_ms "open
+    says: a quote is not closed
+  - written: app:mock | topk("open
+    says: a quote is not closed
+  - written: app:mock | quantile(0.5 "open
+    says: a quote is not closed
+  - written: app:mock | where("open
+    says: a quote is not closed
+  - written: app:mock | where(value "open
+    says: a quote is not closed
+  - written: app:mock | where(value > "open
+    says: a quote is not closed
+  - written: app:mock | sort("open
+    says: a quote is not closed
+  - written: app:mock | extract(message "open
+    says: a quote is not closed

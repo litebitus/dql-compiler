@@ -89,6 +89,7 @@ func TestAnUngroupedCountAnswersZeroWhileTheSourceReports(t *testing.T) {
 		`__name__:mock_waiting | count() by reason`:          `count by (reason) (mock_waiting)`,
 		`__name__:mock_waiting | count() | where(value > 1)`: `count(mock_waiting) > 1`,
 		`__name__:mock_waiting | sum()`:                      `sum(mock_waiting)`,
+		`__name__:mock_waiting`:                              `mock_waiting`,
 	} {
 		got, err := compiledReporting(t, text, mockReporting)
 		if err != nil || got != want {

@@ -8,103 +8,87 @@ import (
 	"github.com/litebitus/dql-compiler/dqlsyntax"
 )
 
-// arithmeticSide is one side of an operator: whether it answers series, and the fields a statistic groups them by.
+// arithmeticSide is one side of an operator: whether it answers series, and the fields they carry where known.
 type arithmeticSide struct {
-	answersSeries  bool
-	groupingStated bool
-	grouping       []string
+	answersSeries bool
+	fieldsKnown   bool
+	fields        []string
 }
 
-func arithmeticSideOf(operand dqlsyntax.Operand) arithmeticSide {
-	if operand.Query == nil {
-		return arithmeticSide{}
-	}
-	grouping, stated := lastGrouping(operand.Query)
-	return arithmeticSide{answersSeries: true, groupingStated: stated, grouping: grouping}
-}
-
-func lastGrouping(query *dqlsyntax.Query) ([]string, bool) {
-	for index := len(query.Stages) - 1; index >= 0; index-- {
-		if category := dqlsyntax.Functions[query.Stages[index].Function].Category; category == dqlsyntax.StatisticCategory {
-			return query.Stages[index].Grouping, true
-		}
-	}
-	return nil, false
+// arithmeticSideOf answers the side the operands from first through last make, their fields as the query's own.
+func arithmeticSideOf(expression dqlsyntax.Expression, first, last int) arithmeticSide {
+	operands := expression.Operands[first : last+1]
+	side := dqlsyntax.ParsedQuery{Expression: dqlsyntax.Expression{
+		Operands:  operands,
+		Operators: expression.Operators[first:last],
+	}}
+	fields, known := side.QueryResultFields()
+	answersSeries := slices.ContainsFunc(operands, func(operand dqlsyntax.Operand) bool { return operand.Query != nil })
+	return arithmeticSide{answersSeries: answersSeries, fieldsKnown: known, fields: fields}
 }
 
 // pairingClauses answers each operator's matching clause, pairing its sides as PromQL reads them: products before sums, left to right.
 func pairingClauses(expression dqlsyntax.Expression) ([]string, error) {
 	clauses := make([]string, len(expression.Operators))
-	pairSides := func(operatorIndex int, left, right arithmeticSide) (arithmeticSide, error) {
-		clause, paired, err := pairingClause(left, right)
+	pairSides := func(operatorIndex, leftFirst, rightLast int) error {
+		left := arithmeticSideOf(expression, leftFirst, operatorIndex)
+		right := arithmeticSideOf(expression, operatorIndex+1, rightLast)
+		clause, err := pairingClause(left, right)
 		clauses[operatorIndex] = clause
-		return paired, err
-	}
-	product := arithmeticSideOf(expression.Operands[0])
-	var sum arithmeticSide
-	sumOperatorIndex := -1
-	addProduct := func() (err error) {
-		if sumOperatorIndex < 0 {
-			sum = product
-			return nil
-		}
-		sum, err = pairSides(sumOperatorIndex, sum, product)
 		return err
 	}
+	productFirst, sumOperatorIndex := 0, -1
+	pairSum := func(productLast int) error {
+		if sumOperatorIndex < 0 {
+			return nil
+		}
+		return pairSides(sumOperatorIndex, 0, productLast)
+	}
 	for index, operator := range expression.Operators {
-		operand := arithmeticSideOf(expression.Operands[index+1])
 		if operator == "*" || operator == "/" {
-			paired, err := pairSides(index, product, operand)
-			if err != nil {
+			if err := pairSides(index, productFirst, index+1); err != nil {
 				return nil, err
 			}
-			product = paired
 			continue
 		}
-		if err := addProduct(); err != nil {
+		if err := pairSum(index); err != nil {
 			return nil, err
 		}
-		sumOperatorIndex, product = index, operand
+		sumOperatorIndex, productFirst = index, index+1
 	}
-	if err := addProduct(); err != nil {
+	if err := pairSum(len(expression.Operands) - 1); err != nil {
 		return nil, err
 	}
 	return clauses, nil
 }
 
-// pairingClause answers the clause pairing two sides, and the side their result is: the one grouping by more fields.
-func pairingClause(left, right arithmeticSide) (string, arithmeticSide, error) {
-	if !left.answersSeries {
-		return "", right, nil
-	}
-	if !right.answersSeries {
-		return "", left, nil
-	}
-	if !left.groupingStated || !right.groupingStated {
-		return "", arithmeticSide{answersSeries: true}, nil
+// pairingClause answers the clause pairing two sides: on the fields they share, many to one from the side grouping by more.
+func pairingClause(left, right arithmeticSide) (string, error) {
+	if !left.answersSeries || !right.answersSeries || !left.fieldsKnown || !right.fieldsKnown {
+		return "", nil
 	}
 	var shared []string
-	for _, field := range left.grouping {
-		if slices.Contains(right.grouping, field) {
+	for _, field := range left.fields {
+		if slices.Contains(right.fields, field) {
 			shared = append(shared, field)
 		}
 	}
-	leftHoldsRight := holdsEveryField(left.grouping, right.grouping)
-	rightHoldsLeft := holdsEveryField(right.grouping, left.grouping)
+	leftHoldsRight := holdsEveryField(left.fields, right.fields)
+	rightHoldsLeft := holdsEveryField(right.fields, left.fields)
 	switch {
 	case leftHoldsRight && rightHoldsLeft && len(shared) == 0:
-		return "", left, nil
+		return "", nil
 	case leftHoldsRight && rightHoldsLeft:
-		return onClause(shared) + " ", left, nil
+		return onClause(shared) + " ", nil
 	case leftHoldsRight:
-		return onClause(shared) + " group_left () ", left, nil
+		return onClause(shared) + " group_left () ", nil
 	case rightHoldsLeft:
-		return onClause(shared) + " group_right () ", right, nil
+		return onClause(shared) + " group_right () ", nil
 	}
-	return "", arithmeticSide{}, fmt.Errorf(
+	return "", fmt.Errorf(
 		"arithmetic between queries grouped by (%s) and by (%s) does not compile to PromQL: "+
 			"PromQL pairs many series with one, so one side groups by every field of the other",
-		strings.Join(left.grouping, ", "), strings.Join(right.grouping, ", "))
+		strings.Join(left.fields, ", "), strings.Join(right.fields, ", "))
 }
 
 func holdsEveryField(grouping, fields []string) bool {
