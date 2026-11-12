@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.2 — 2026-11-12
+
 - Library
   - `promqlbackend`: arithmetic with a side grouping by more fields pairs each of its series with the other side's one, and the result keeps its fields.
 - Development
