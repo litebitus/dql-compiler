@@ -306,7 +306,13 @@ A blank filter matches every record.
 - A query answering items is a search: shaping and result functions set its `collapse`, `_source`, `sort` and `size`.
 - A query answering time series is an aggregation over one time or statistic function. `per_second` buckets with `date_histogram` on the configured time field; `by` nests a `terms` aggregation per grouping field, of the configured group limit.
 - `topk`, `bottomk` and `where` apply to the buckets of the function before them: `topk` and `bottomk` order and size its innermost `terms`, and `where` is a `bucket_selector` in it.
-- Arithmetic is refused: a search request answers one query.
+- Arithmetic is one search. Its query matches either side's filter, and the buckets the sides share — the `date_histogram` of their time function and a `terms` per field both group by — hold a `filter` aggregation per side, each side's filter with its statistic inside. A `bucket_script` in the innermost bucket combines the sides' values by the operators. A number is a constant of the script; `now()` is the bucket's time in seconds, or the time the request is compiled where the sides have no time function.
+
+| The sides | Compile to |
+|---|---|
+| group by the same fields, with the same time function and window | one search, as above |
+| one side groups by more fields | refused: a `bucket_script` reads only the values in its own bucket |
+| differ in their time function or its window | refused: the sides share one `date_histogram` |
 
 ## Calls
 
@@ -320,7 +326,7 @@ field_values(job, "__name__:mock_up and env:${env}")
 
 | Package | Entry point | Answers |
 |---|---|---|
-| `dqlsyntax` | `ParseQuery(text, grammarVersion string) (ParsedQuery, error)` | the query's syntax tree; its `ResultKind()` is `ItemsResult` or `TimeSeriesResult`, and its `QueryResultFields()` the fields each series of its result carries: its last grouping, or across arithmetic the side grouping by every field of the other, unknown where a query states no grouping |
+| `dqlsyntax` | `ParseQuery(text, grammarVersion string) (ParsedQuery, error)` | the query's syntax tree; its `ResultKind()` is `ItemsResult` or `TimeSeriesResult`, and its `QueryResultFields()` the fields each series of its result carries: its last grouping, or across arithmetic the side grouping by every field of the other, unknown where a query states no grouping; its `FieldValues(field)` the values its filters compare the field with, in the order written |
 | `dqlsyntax` | `ParseCall(text, grammarVersion string) (Call, error)` | the call's function, lowercased, and its arguments, each a field, a number or a quoted string |
 | `promqlbackend` | `CompileQuery(query ParsedQuery) (string, error)` | the PromQL expression |
 | `opensearchbackend` | `CompileQuery(query ParsedQuery, config BackendConfig) (map[string]any, error)` | the search request body |
