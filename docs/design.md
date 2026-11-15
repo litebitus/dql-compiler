@@ -326,7 +326,7 @@ field_values(job, "__name__:mock_up and env:${env}")
 
 | Package | Entry point | Answers |
 |---|---|---|
-| `dqlsyntax` | `ParseQuery(text, grammarVersion string) (ParsedQuery, error)` | the query's syntax tree; its `ResultKind()` is `ItemsResult` or `TimeSeriesResult`, and its `QueryResultFields()` the fields each series of its result carries: its last grouping, or across arithmetic the side grouping by every field of the other, unknown where a query states no grouping; its `FieldValues(field)` the values its filters compare the field with, in the order written |
+| `dqlsyntax` | `ParseQuery(text, grammarVersion string) (ParsedQuery, error)` | the query's syntax tree; its `ResultKind()` is `ItemsResult` or `TimeSeriesResult`, and its `QueryResultFields()` the fields each series of its result carries: its last grouping, or across arithmetic the side grouping by every field of the other, unknown where a query states no grouping; its `FieldValues(field)` the values its filters compare the field with, in the order written; its `FieldRanges(field)` the ranges its filters put on the field, in the order written |
 | `dqlsyntax` | `ParseCall(text, grammarVersion string) (Call, error)` | the call's function, lowercased, and its arguments, each a field, a number or a quoted string |
 | `promqlbackend` | `CompileQuery(query ParsedQuery) (string, error)` | the PromQL expression |
 | `opensearchbackend` | `CompileQuery(query ParsedQuery, config BackendConfig) (map[string]any, error)` | the search request body |

@@ -4,6 +4,9 @@
 
 - Library
   - `dqlsyntax`: a stage holding more than its function's arguments is refused as `"count" needs ")", not "a"`, not as an unclosed parenthesis.
+  - `dqlsyntax`: a parsed query's `FieldValues(field)` answers the values its filters compare the field with.
+  - `dqlsyntax`: a parsed query's `FieldRanges(field)` answers the ranges its filters put on the field.
+  - `opensearchbackend`: arithmetic compiles to one search, a `bucket_script` combining the sides in the buckets they share.
 
 ## v0.1.3 — 2026-11-12
 

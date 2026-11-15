@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/litebitus/dql-compiler/dqlsyntax"
 )
@@ -24,22 +26,31 @@ const valueAggregation = "value"
 
 // CompileQuery answers the search request body a parsed query compiles to.
 func CompileQuery(query dqlsyntax.ParsedQuery, config BackendConfig) (map[string]any, error) {
+	return compileQueryAt(query, config, time.Now())
+}
+
+func compileQueryAt(
+	query dqlsyntax.ParsedQuery, config BackendConfig, compiledAt time.Time,
+) (map[string]any, error) {
 	if len(query.Expression.Operands) > 1 {
-		return nil, errors.New("arithmetic does not compile to the OpenSearch query DSL: a search request answers one query")
+		return arithmeticRequest(query.Expression, config, compiledAt)
 	}
 	parsed := query.Expression.Operands[0].Query
-	queryClause := map[string]any{"match_all": map[string]any{}}
-	if parsed.Filter != nil {
-		clause, err := filterClause(parsed.Filter, "")
-		if err != nil {
-			return nil, err
-		}
-		queryClause = clause
+	queryClause, err := queryClauseOf(parsed.Filter)
+	if err != nil {
+		return nil, err
 	}
 	if query.ResultKind() == dqlsyntax.ItemsResult {
 		return itemsRequest(queryClause, parsed.Stages)
 	}
 	return seriesRequest(queryClause, parsed.Stages, config)
+}
+
+func queryClauseOf(filter dqlsyntax.FilterNode) (map[string]any, error) {
+	if filter == nil {
+		return map[string]any{"match_all": map[string]any{}}, nil
+	}
+	return filterClause(filter, "")
 }
 
 func itemsRequest(queryClause map[string]any, stages []dqlsyntax.Stage) (map[string]any, error) {
@@ -81,29 +92,15 @@ type bucketedMetric struct {
 }
 
 func seriesRequest(queryClause map[string]any, stages []dqlsyntax.Stage, config BackendConfig) (map[string]any, error) {
-	var computing *dqlsyntax.Stage
-	var selecting []dqlsyntax.Stage
-	for index, stage := range stages {
-		switch dqlsyntax.Functions[stage.Function].Category {
-		case dqlsyntax.ShapingCategory:
-			return nil, fmt.Errorf("%q does not compile to the OpenSearch query DSL beside an aggregation", stage.Function)
-		case dqlsyntax.ResultCategory:
-			if computing == nil {
-				return nil, fmt.Errorf("%q compiles to the OpenSearch query DSL after the function whose buckets it selects", stage.Function)
-			}
-			selecting = append(selecting, stage)
-		default:
-			if computing != nil {
-				return nil, errors.New("the OpenSearch query DSL compiles one time or statistic function per query")
-			}
-			computing = &stages[index]
-		}
+	computing, selecting, err := computingAndSelecting(stages)
+	if err != nil {
+		return nil, err
 	}
 	grouping := computing.Grouping
-	if len(grouping) > 0 && config.GroupLimit <= 0 {
-		return nil, errors.New("the OpenSearch backend needs a group limit to group by a field")
+	if err := checkGroupLimit(grouping, config); err != nil {
+		return nil, err
 	}
-	metric, err := metricOf(*computing, config, len(grouping) > 0)
+	metric, err := metricOf(computing, config, len(grouping) > 0)
 	if err != nil {
 		return nil, err
 	}
@@ -124,17 +121,242 @@ func seriesRequest(queryClause map[string]any, stages []dqlsyntax.Stage, config 
 	if len(grouping) > 0 {
 		aggregations = groupedBy(grouping, config.GroupLimit, innermost)
 	}
-	if computing.Function == "per_second" {
-		histogram := map[string]any{"date_histogram": map[string]any{
-			"field":          config.TimeField,
-			"fixed_interval": fixedInterval(computing.Duration),
-		}}
-		if len(aggregations) > 0 {
-			histogram["aggs"] = aggregations
+	return map[string]any{
+		"size":  0,
+		"query": queryClause,
+		"aggs":  timeHistogram(computing, config, aggregations),
+	}, nil
+}
+
+func computingAndSelecting(stages []dqlsyntax.Stage) (dqlsyntax.Stage, []dqlsyntax.Stage, error) {
+	var computing *dqlsyntax.Stage
+	var selecting []dqlsyntax.Stage
+	for index, stage := range stages {
+		switch dqlsyntax.Functions[stage.Function].Category {
+		case dqlsyntax.ShapingCategory:
+			return dqlsyntax.Stage{}, nil, fmt.Errorf(
+				"%q does not compile to the OpenSearch query DSL beside an aggregation", stage.Function,
+			)
+		case dqlsyntax.ResultCategory:
+			if computing == nil {
+				return dqlsyntax.Stage{}, nil, fmt.Errorf(
+					"%q compiles to the OpenSearch query DSL after the function whose buckets it selects",
+					stage.Function,
+				)
+			}
+			selecting = append(selecting, stage)
+		default:
+			if computing != nil {
+				return dqlsyntax.Stage{}, nil,
+					errors.New("the OpenSearch query DSL compiles one time or statistic function per query")
+			}
+			computing = &stages[index]
 		}
-		aggregations = map[string]any{"time": histogram}
 	}
-	return map[string]any{"size": 0, "query": queryClause, "aggs": aggregations}, nil
+	return *computing, selecting, nil
+}
+
+func checkGroupLimit(grouping []string, config BackendConfig) error {
+	if len(grouping) > 0 && config.GroupLimit <= 0 {
+		return errors.New("the OpenSearch backend needs a group limit to group by a field")
+	}
+	return nil
+}
+
+func timeHistogram(
+	computing dqlsyntax.Stage, config BackendConfig, aggregations map[string]any,
+) map[string]any {
+	if computing.Function != "per_second" {
+		return aggregations
+	}
+	histogram := map[string]any{"date_histogram": map[string]any{
+		"field":          config.TimeField,
+		"fixed_interval": fixedInterval(computing.Duration),
+	}}
+	if len(aggregations) > 0 {
+		histogram["aggs"] = aggregations
+	}
+	return map[string]any{"time": histogram}
+}
+
+type arithmeticSide struct {
+	aggregationName string
+	operandIndex    int
+	computing       dqlsyntax.Stage
+	clause          map[string]any
+}
+
+type compiledSide struct {
+	aggregation map[string]any
+	valuePath   string
+	scriptTerm  string
+}
+
+func arithmeticRequest(
+	expression dqlsyntax.Expression, config BackendConfig, compiledAt time.Time,
+) (map[string]any, error) {
+	sides, err := arithmeticSidesOf(expression)
+	if err != nil {
+		return nil, err
+	}
+	var shared dqlsyntax.Stage
+	if len(sides) > 0 {
+		shared = sides[0].computing
+	}
+	for _, side := range sides {
+		if timeWindowSeconds(side.computing) != timeWindowSeconds(shared) {
+			return nil, errors.New(
+				"sides differing in their time function or its window " +
+					"do not compile to the OpenSearch query DSL: the sides share one date_histogram",
+			)
+		}
+		if !groupsAlike(side.computing.Grouping, shared.Grouping) {
+			return nil, errors.New(
+				"a side grouping by more fields does not compile to the OpenSearch query DSL: " +
+					"a bucket_script reads only the values in its own bucket",
+			)
+		}
+	}
+	grouping, timed := shared.Grouping, shared.Function == "per_second"
+	if len(grouping) == 0 && !timed {
+		return nil, errors.New(
+			"arithmetic compiles to the OpenSearch query DSL over buckets: a grouping or a time function",
+		)
+	}
+	if err := checkGroupLimit(grouping, config); err != nil {
+		return nil, err
+	}
+	holdsNow := slices.ContainsFunc(expression.Operands, func(operand dqlsyntax.Operand) bool {
+		return operand.Now
+	})
+	if holdsNow && timed && len(grouping) > 0 {
+		return nil, errors.New(
+			"now() does not compile to the OpenSearch query DSL beside a time function and a grouping: " +
+				"a bucket_script reads only its own bucket's key",
+		)
+	}
+	innermostAggregations := map[string]any{}
+	bucketsPaths := map[string]any{}
+	scriptTerms := make([]string, len(expression.Operands))
+	searchClauses := make([]any, 0, len(sides))
+	for _, side := range sides {
+		compiled, err := compiledSideOf(side, config)
+		if err != nil {
+			return nil, err
+		}
+		innermostAggregations[side.aggregationName] = compiled.aggregation
+		bucketsPaths[side.aggregationName] = side.aggregationName + ">" + compiled.valuePath
+		scriptTerms[side.operandIndex] = compiled.scriptTerm
+		searchClauses = append(searchClauses, side.clause)
+	}
+	var script strings.Builder
+	for index, operand := range expression.Operands {
+		if index > 0 {
+			script.WriteString(" ")
+			script.WriteString(expression.Operators[index-1])
+			script.WriteString(" ")
+		}
+		switch {
+		case operand.Query != nil:
+			script.WriteString(scriptTerms[index])
+		case operand.Now && timed:
+			bucketsPaths["now"] = "_key"
+			script.WriteString("(params.now / 1000)")
+		case operand.Now:
+			script.WriteString(scriptNumber(strconv.FormatInt(compiledAt.Unix(), 10)))
+		default:
+			script.WriteString(scriptNumber(operand.Number))
+		}
+	}
+	innermostAggregations[valueAggregation] = map[string]any{"bucket_script": map[string]any{
+		"buckets_path": bucketsPaths,
+		"script":       script.String(),
+	}}
+	aggregations := innermostAggregations
+	if len(grouping) > 0 {
+		aggregations = groupedBy(grouping, config.GroupLimit, map[string]any{"aggs": innermostAggregations})
+	}
+	return map[string]any{
+		"size":  0,
+		"query": map[string]any{"bool": map[string]any{"should": searchClauses, "minimum_should_match": 1}},
+		"aggs":  timeHistogram(shared, config, aggregations),
+	}, nil
+}
+
+func arithmeticSidesOf(expression dqlsyntax.Expression) ([]arithmeticSide, error) {
+	var sides []arithmeticSide
+	for index, operand := range expression.Operands {
+		if operand.Query == nil {
+			continue
+		}
+		computing, selecting, err := computingAndSelecting(operand.Query.Stages)
+		if err != nil {
+			return nil, err
+		}
+		if len(selecting) > 0 {
+			return nil, fmt.Errorf(
+				"%q does not compile to the OpenSearch query DSL on a side of arithmetic: "+
+					"the sides share their buckets",
+				selecting[0].Function,
+			)
+		}
+		clause, err := queryClauseOf(operand.Query.Filter)
+		if err != nil {
+			return nil, err
+		}
+		sides = append(sides, arithmeticSide{
+			aggregationName: "side_" + strconv.Itoa(len(sides)),
+			operandIndex:    index,
+			computing:       computing,
+			clause:          clause,
+		})
+	}
+	return sides, nil
+}
+
+func compiledSideOf(side arithmeticSide, config BackendConfig) (compiledSide, error) {
+	metric, err := metricOf(side.computing, config, true)
+	if err != nil {
+		return compiledSide{}, err
+	}
+	aggregation := map[string]any{"filter": side.clause}
+	parameter := "params." + side.aggregationName
+	if side.computing.Function == "per_second" {
+		seconds := strconv.FormatFloat(timeWindowSeconds(side.computing), 'f', -1, 64)
+		return compiledSide{
+			aggregation: aggregation,
+			valuePath:   "_count",
+			scriptTerm:  "(" + parameter + " / " + seconds + ")",
+		}, nil
+	}
+	if len(metric.leaf) > 0 {
+		aggregation["aggs"] = metric.leaf
+	}
+	return compiledSide{aggregation: aggregation, valuePath: metric.metricPath, scriptTerm: parameter}, nil
+}
+
+func timeWindowSeconds(stage dqlsyntax.Stage) float64 {
+	if stage.Function != "per_second" {
+		return 0
+	}
+	seconds, _ := durationSeconds(stage.Duration)
+	return seconds
+}
+
+func groupsAlike(grouping, otherGrouping []string) bool {
+	return len(grouping) == len(otherGrouping) &&
+		!slices.ContainsFunc(grouping, func(field string) bool {
+			return !slices.Contains(otherGrouping, field)
+		})
+}
+
+func scriptNumber(text string) string {
+	number, _ := strconv.ParseFloat(text, 64)
+	written := strconv.FormatFloat(number, 'f', -1, 64)
+	if !strings.Contains(written, ".") {
+		written += ".0"
+	}
+	return written
 }
 
 var metricAggregations = map[string]string{
@@ -177,10 +399,17 @@ func metricOf(stage dqlsyntax.Stage, config BackendConfig, grouped bool) (bucket
 		if err != nil {
 			return bucketedMetric{}, err
 		}
-		field["percents"] = []any{math.Round(percent*100*1e9) / 1e9}
-		return bucketedMetric{leaf: map[string]any{valueAggregation: map[string]any{"percentiles": field}}}, nil
+		percentile := math.Round(percent*100*1e9) / 1e9
+		field["percents"] = []any{percentile}
+		return bucketedMetric{
+			leaf:       map[string]any{valueAggregation: map[string]any{"percentiles": field}},
+			metricPath: valueAggregation + "[" + strconv.FormatFloat(percentile, 'f', -1, 64) + "]",
+		}, nil
 	case "stdev":
-		return bucketedMetric{leaf: map[string]any{valueAggregation: map[string]any{"extended_stats": field}}}, nil
+		return bucketedMetric{
+			leaf:       map[string]any{valueAggregation: map[string]any{"extended_stats": field}},
+			metricPath: valueAggregation + ".std_deviation",
+		}, nil
 	}
 	return bucketedMetric{
 		leaf:       map[string]any{valueAggregation: map[string]any{metricAggregations[stage.Function]: field}},
