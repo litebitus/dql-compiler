@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## v0.1.4 — 2026-11-15
+
 - Library
   - `dqlsyntax`: a stage holding more than its function's arguments is refused as `"count" needs ")", not "a"`, not as an unclosed parenthesis.
   - `dqlsyntax`: a parsed query's `FieldValues(field)` answers the values its filters compare the field with.
